@@ -39,6 +39,15 @@ _NUMERIC = {
     TokenKind.STAR: lambda a, b: a * b,
 }
 
+# bitwise folding is integer-only, matching the machine: a float has no bit
+# pattern and a bool is not an integer here, so those are left unfolded and the
+# type error still reaches the program at run time
+_BITWISE = {
+    TokenKind.AMPERSAND: lambda a, b: a & b,
+    TokenKind.PIPE: lambda a, b: a | b,
+    TokenKind.CARET: lambda a, b: a ^ b,
+}
+
 _COMPARISON = {
     TokenKind.LESS: lambda a, b: a < b,
     TokenKind.LESS_EQUAL: lambda a, b: a <= b,
@@ -49,6 +58,10 @@ _COMPARISON = {
 
 def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _is_whole(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
 def _literal(value: Any, token: Token) -> e.Literal:
@@ -107,6 +120,8 @@ def _fold_unary(node: e.Unary) -> e.Expr:
             return _literal(-operand.value, node.operator)
         if node.operator.kind in (TokenKind.BANG, TokenKind.NOT):
             return _literal(not is_truthy(operand.value), node.operator)
+        if node.operator.kind == TokenKind.TILDE and _is_whole(operand.value):
+            return _literal(~operand.value, node.operator)
     return e.Unary(node.operator, operand)
 
 
@@ -130,6 +145,17 @@ def _fold_binary(node: e.Binary) -> e.Expr:
         if isinstance(a, str) and isinstance(b, str):
             return _literal(a + b, token)
         return rebuilt
+    if kind in _BITWISE or kind in (TokenKind.LESS_LESS, TokenKind.GREATER_GREATER):
+        if not (_is_whole(a) and _is_whole(b)):
+            return rebuilt
+        if kind in _BITWISE:
+            return _literal(_BITWISE[kind](a, b), token)
+        if b < 0:
+            # a negative shift is a run-time fault, so it is left to happen
+            return rebuilt
+        if kind == TokenKind.LESS_LESS:
+            return _literal(a << b, token)
+        return _literal(a >> b, token)
     if not (_is_number(a) and _is_number(b)):
         # comparisons of two strings are foldable, everything else is left for
         # the machine so its type error still reaches the program
