@@ -103,6 +103,40 @@ class TestProfile:
         assert "error:" in capsys.readouterr().err
 
 
+class TestRepl:
+    def test_it_evaluates_lines_and_ends_on_end_of_input(self, capsys, monkeypatch):
+        lines = iter(["1 + 2;", "fn dbl(x) { return x * 2; }", "dbl(4);"])
+
+        def fake_input(prompt: str = "") -> str:
+            print(prompt, end="")
+            try:
+                return next(lines)
+            except StopIteration:
+                raise EOFError from None
+
+        monkeypatch.setattr("builtins.input", fake_input)
+        code = main(["repl"])
+        captured = capsys.readouterr()
+        assert code == 0
+        assert "3" in captured.out
+        assert "8" in captured.out
+
+    def test_a_fault_does_not_end_the_session(self, capsys, monkeypatch):
+        lines = iter(["1 / 0;", "let n = 4;", "n + 1;"])
+
+        def fake_input(_prompt: str = "") -> str:
+            try:
+                return next(lines)
+            except StopIteration:
+                raise EOFError from None
+
+        monkeypatch.setattr("builtins.input", fake_input)
+        assert main(["repl"]) == 0
+        captured = capsys.readouterr()
+        assert "division by zero" in captured.err
+        assert "5" in captured.out
+
+
 class TestUsage:
     def test_no_arguments_prints_usage(self, capsys):
         assert main([]) == 2

@@ -21,6 +21,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+_NEWLINE = chr(10)
+
 _USAGE = """usage: python -m ember.cli <command> [argument]
 
   run <file>          execute a program file and print its output
@@ -28,6 +30,7 @@ _USAGE = """usage: python -m ember.cli <command> [argument]
   disassemble <file>  show the bytecode a program compiles to
   optimized <file>    show the bytecode after the optimizer runs
   profile <file>      run a program and report where the work went
+  repl                start an interactive session
   traces              print every recorded claim and whether it holds
   check               report whether any trace is broken
   summary             print how many traces there are
@@ -96,6 +99,35 @@ def _profile(source: str) -> int:
     return 0
 
 
+def _repl() -> int:
+    from ember.repl import Session, is_incomplete
+
+    session = Session()
+    print("ember session. an empty line cancels a pending input; ctrl-d ends it.")
+    pending: list[str] = []
+    while True:
+        prompt = "... " if pending else ">>> "
+        try:
+            line = input(prompt)
+        except EOFError:
+            print()
+            return 0
+        if not line.strip() and pending:
+            # an empty line abandons a half-written input rather than running it
+            pending.clear()
+            continue
+        pending.append(line)
+        source = _NEWLINE.join(pending)
+        if is_incomplete(source):
+            continue
+        pending.clear()
+        printed, error = session.evaluate_safely(source)
+        for output in printed:
+            print(output)
+        if error is not None:
+            print(f"error: {error}", file=sys.stderr)
+
+
 def _traces() -> int:
     from ember.traces.registry import broken, run_all
 
@@ -139,6 +171,8 @@ def main(argv: list[str] | None = None) -> int:
         return _check()
     if command == "summary":
         return _summary()
+    if command == "repl":
+        return _repl()
     if command in ("run", "eval", "disassemble", "optimized", "profile"):
         if not rest:
             print(f"{command} needs an argument", file=sys.stderr)
