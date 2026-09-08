@@ -293,6 +293,8 @@ class TreeWalker:
         elif isinstance(node, s.ReturnStmt):
             value = self._evaluate(node.value, env) if node.value else None
             raise _Return(value)
+        elif isinstance(node, s.MatchStmt):
+            self._match(node, env)
         elif isinstance(node, s.TryStmt):
             self._try(node, env)
         elif isinstance(node, s.ThrowStmt):
@@ -303,6 +305,16 @@ class TreeWalker:
             raise _Continue
         else:
             raise TypeMismatch(f"the tree-walker cannot execute {type(node).__name__}")
+
+    def _match(self, node: s.MatchStmt, env: Environment) -> None:
+        subject = self._evaluate(node.subject, env)
+        for arm in node.cases:
+            for value in arm.values:
+                if values_equal(subject, self._evaluate(value, env)):
+                    self._execute(arm.body, Environment(env))
+                    return
+        if node.default is not None:
+            self._execute(node.default, Environment(env))
 
     def _try(self, node: s.TryStmt, env: Environment) -> None:
         try:

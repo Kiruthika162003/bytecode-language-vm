@@ -64,6 +64,7 @@ _SUPER = "super"
 _ITER = "@iterable"
 _INDEX = "@index"
 _LIMIT = "@limit"
+_SUBJECT = "@subject"
 
 _BINARY_OPS = {
     TokenKind.PLUS: OpCode.ADD,
@@ -231,6 +232,8 @@ class Compiler:
             self._class(node)
         elif isinstance(node, s.ReturnStmt):
             self._return(node)
+        elif isinstance(node, s.MatchStmt):
+            self._match(node)
         elif isinstance(node, s.TryStmt):
             self._try(node)
         elif isinstance(node, s.ThrowStmt):
@@ -558,6 +561,46 @@ class Compiler:
         else:
             self._emit(OpCode.NIL, line)
         self._emit(OpCode.RETURN, line)
+
+    def _match(self, node: s.MatchStmt) -> None:
+        """Compile a match into one subject evaluation and a chain of comparisons.
+
+        The subject is computed once into a hidden local, so a call in that
+        position happens a single time however many arms are tested against it.
+        Each arm compares the subject to its values in turn and jumps to the body
+        on the first that is equal, and because this language has no fallthrough
+        every body ends by jumping past the rest, so exactly one arm can run.
+        """
+        line = node.keyword.line
+        self._scope.begin_scope()
+        self._expression(node.subject)
+        self._scope.declare(_SUBJECT)
+        subject_slot = self._scope.resolve(_SUBJECT)
+        finished: list[int] = []
+        for arm in node.cases:
+            matched: list[int] = []
+            for value in arm.values:
+                self._emit(OpCode.GET_LOCAL, line)
+                self._emit_byte(subject_slot, line)
+                self._expression(value)
+                self._emit(OpCode.EQUAL, line)
+                matched.append(self._emit_jump(OpCode.JUMP_IF_TRUE, line))
+                # the comparison left a falsehood behind, so it is dropped before
+                # the next value is tried
+                self._emit(OpCode.POP, line)
+            skip = self._emit_jump(OpCode.JUMP, line)
+            for offset in matched:
+                self._patch_jump(offset)
+            # whichever comparison jumped here left its truth on the stack
+            self._emit(OpCode.POP, line)
+            self._statement(arm.body)
+            finished.append(self._emit_jump(OpCode.JUMP, line))
+            self._patch_jump(skip)
+        if node.default is not None:
+            self._statement(node.default)
+        for offset in finished:
+            self._patch_jump(offset)
+        self._discard_scope(self._scope.end_scope())
 
     def _try(self, node: s.TryStmt) -> None:
         line = node.keyword.line
