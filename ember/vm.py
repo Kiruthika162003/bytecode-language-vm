@@ -96,6 +96,27 @@ class VM:
     def _frame(self) -> CallFrame:
         return self.frames[-1]
 
+    def current_line(self) -> int:
+        # ip has already advanced past the byte being executed, so the line for
+        # the instruction that is running is the one before it
+        frame = self._frame()
+        if not frame.function.chunk.code:
+            return 1
+        offset = min(max(frame.ip - 1, 0), len(frame.function.chunk.code) - 1)
+        return frame.function.chunk.line_at(offset)
+
+    def call_stack(self) -> list[tuple[str, int]]:
+        stack: list[tuple[str, int]] = []
+        for frame in reversed(self.frames):
+            chunk = frame.function.chunk
+            if chunk.code:
+                offset = min(max(frame.ip - 1, 0), len(chunk.code) - 1)
+                line = chunk.line_at(offset)
+            else:
+                line = 1
+            stack.append((frame.function.name, line))
+        return stack
+
     def _read_byte(self) -> int:
         frame = self._frame()
         byte = frame.function.chunk.code[frame.ip]
