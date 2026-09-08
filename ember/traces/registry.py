@@ -22,26 +22,38 @@ from ember.traces import (
     closuretrace,
     costtrace,
     foldtrace,
+    formattrace,
     inherittrace,
+    iterationtrace,
+    lintquiettrace,
+    peepholetrace,
     pooltrace,
     prunetrace,
+    rangetrace,
     serializetrace,
     sharedtrace,
     slottrace,
+    unwindtrace,
 )
 from ember.traces.finding import Finding
 
 TRACES: tuple[Callable[[], Finding], ...] = (
     foldtrace.run,
     prunetrace.run,
+    peepholetrace.run,
     slottrace.run,
     pooltrace.run,
     closuretrace.run,
     sharedtrace.run,
+    iterationtrace.run,
     inherittrace.run,
     aritytrace.run,
+    rangetrace.run,
+    unwindtrace.run,
     costtrace.run,
     serializetrace.run,
+    formattrace.run,
+    lintquiettrace.run,
     agreetrace.run,
 )
 
