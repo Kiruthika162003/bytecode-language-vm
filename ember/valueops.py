@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ember.classes import BoundMethod
 from ember.closure import Closure
 from ember.function import Function, NativeFunction
 
@@ -74,7 +75,16 @@ def type_name(value: Any) -> str:
         return "list"
     if isinstance(value, dict):
         return "map"
-    if isinstance(value, (Function, NativeFunction, Closure)):
+    # classes and instances are recognized by shape rather than by type, so the
+    # two backends' own objects report the same names without this module having
+    # to import either backend and create a cycle
+    if hasattr(value, "klass") and hasattr(value, "fields"):
+        return value.klass.name
+    if hasattr(value, "methods") and hasattr(value, "name"):
+        return "class"
+    if isinstance(value, (Function, NativeFunction, Closure, BoundMethod)):
+        return "function"
+    if hasattr(value, "arity"):
         return "function"
     return "value"
 

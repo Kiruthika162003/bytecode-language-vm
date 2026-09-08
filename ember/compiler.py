@@ -30,7 +30,8 @@ from __future__ import annotations
 from ember import exprnodes as e
 from ember import stmtnodes as s
 from ember.chunk import Chunk
-from ember.errors import Compile, Immutable
+from ember.classes import INITIALIZER
+from ember.errors import Compile, Immutable, Resolve
 from ember.function import Function
 from ember.localscope import Local, LocalScope
 from ember.opcode import OpCode
@@ -71,6 +72,7 @@ class _FunctionUnit:
         self.scope = LocalScope()
         self.enclosing = enclosing
         self.upvalues: list[_Upvalue] = []
+        self.is_initializer = False
 
 
 class Compiler:
@@ -162,6 +164,8 @@ class Compiler:
             self._for(node)
         elif isinstance(node, s.FunctionStmt):
             self._function(node)
+        elif isinstance(node, s.ClassStmt):
+            self._class(node)
         elif isinstance(node, s.ReturnStmt):
             self._return(node)
         else:
@@ -274,6 +278,69 @@ class Compiler:
             self._emit_byte(upvalue.index, line)
         self._define_name(node.name, is_const=False)
 
+    def _class(self, node: s.ClassStmt) -> None:
+        line = node.name.line
+        name_index = self._chunk.add_constant(node.name.lexeme)
+        self._emit(OpCode.CLASS, line)
+        self._emit_byte(name_index, line)
+        self._define_name(node.name, is_const=False)
+        # the class has to be back on the stack for each METHOD to attach to,
+        # so it is loaded again by the name just bound and popped at the end
+        self._load_name(node.name)
+        seen: set[str] = set()
+        for method in node.methods:
+            if method.name.lexeme in seen:
+                raise Resolve(
+                    f"the class {node.name.lexeme!r} declares the method "
+                    f"{method.name.lexeme!r} twice; remove one of them"
+                )
+            seen.add(method.name.lexeme)
+            self._method(method)
+        self._emit(OpCode.POP, line)
+
+    def _method(self, node: s.FunctionStmt) -> None:
+        line = node.name.line
+        is_initializer = node.name.lexeme == INITIALIZER
+        unit = _FunctionUnit(node.name.lexeme, len(node.parameters), enclosing=self._unit)
+        unit.is_initializer = is_initializer
+        unit.scope.begin_scope()
+        unit.scope.declare_receiver()
+        for parameter in node.parameters:
+            unit.scope.declare(parameter.lexeme)
+        self._units.append(unit)
+        for statement in node.body:
+            self._statement(statement)
+        if is_initializer:
+            # an initializer always yields the instance, never nil, so the
+            # caller of a class gets the object back rather than nothing
+            self._emit(OpCode.GET_LOCAL, line)
+            self._emit_byte(0, line)
+        else:
+            self._emit(OpCode.NIL, line)
+        self._emit(OpCode.RETURN, line)
+        self._units.pop()
+        unit.function.upvalue_count = len(unit.upvalues)
+        index = self._chunk.add_constant(unit.function)
+        self._emit(OpCode.CLOSURE, line)
+        self._emit_byte(index, line)
+        for upvalue in unit.upvalues:
+            self._emit_byte(1 if upvalue.is_local else 0, line)
+            self._emit_byte(upvalue.index, line)
+        name_index = self._chunk.add_constant(node.name.lexeme)
+        self._emit(OpCode.METHOD, line)
+        self._emit_byte(name_index, line)
+
+    def _load_name(self, name: Token) -> None:
+        line = name.line
+        slot = self._scope.resolve(name.lexeme)
+        if slot is not None:
+            self._emit(OpCode.GET_LOCAL, line)
+            self._emit_byte(slot, line)
+            return
+        index = self._chunk.add_constant(name.lexeme)
+        self._emit(OpCode.GET_GLOBAL, line)
+        self._emit_byte(index, line)
+
     def _add_upvalue(self, unit: _FunctionUnit, index: int, is_local: bool) -> int:
         for existing, upvalue in enumerate(unit.upvalues):
             if upvalue.index == index and upvalue.is_local == is_local:
@@ -302,7 +369,15 @@ class Compiler:
     def _return(self, node: s.ReturnStmt) -> None:
         line = node.keyword.line
         if node.value is not None:
+            if self._unit.is_initializer:
+                raise Resolve(
+                    f"the initializer on line {line} cannot return a value, "
+                    "since calling a class must yield the new instance"
+                )
             self._expression(node.value)
+        elif self._unit.is_initializer:
+            self._emit(OpCode.GET_LOCAL, line)
+            self._emit_byte(0, line)
         else:
             self._emit(OpCode.NIL, line)
         self._emit(OpCode.RETURN, line)
@@ -339,6 +414,12 @@ class Compiler:
             self._index(node)
         elif isinstance(node, e.SetIndex):
             self._set_index(node)
+        elif isinstance(node, e.Get):
+            self._get_property(node)
+        elif isinstance(node, e.Set):
+            self._set_property(node)
+        elif isinstance(node, e.This):
+            self._this(node)
         elif isinstance(node, e.ListLiteral):
             self._list(node)
         elif isinstance(node, e.MapLiteral):
@@ -440,6 +521,36 @@ class Compiler:
         self._expression(node.key)
         self._emit(OpCode.INDEX_GET, node.bracket.line)
 
+    def _get_property(self, node: e.Get) -> None:
+        self._expression(node.target)
+        index = self._chunk.add_constant(node.name.lexeme)
+        self._emit(OpCode.GET_PROPERTY, node.name.line)
+        self._emit_byte(index, node.name.line)
+
+    def _set_property(self, node: e.Set) -> None:
+        self._expression(node.target)
+        self._expression(node.value)
+        index = self._chunk.add_constant(node.name.lexeme)
+        self._emit(OpCode.SET_PROPERTY, node.name.line)
+        self._emit_byte(index, node.name.line)
+
+    def _this(self, node: e.This) -> None:
+        line = node.keyword.line
+        slot = self._scope.resolve("this")
+        if slot is not None:
+            self._emit(OpCode.GET_LOCAL, line)
+            self._emit_byte(slot, line)
+            return
+        upvalue = self._resolve_upvalue(self._unit, "this")
+        if upvalue is not None:
+            self._emit(OpCode.GET_UPVALUE, line)
+            self._emit_byte(upvalue, line)
+            return
+        raise Resolve(
+            f"'this' on line {line} is outside any method, so there is no "
+            "instance for it to name"
+        )
+
     def _set_index(self, node: e.SetIndex) -> None:
         self._expression(node.collection)
         self._expression(node.key)
@@ -476,6 +587,10 @@ class Compiler:
             return node.paren.line
         if isinstance(node, (e.Index, e.SetIndex)):
             return node.bracket.line
+        if isinstance(node, (e.Get, e.Set)):
+            return node.name.line
+        if isinstance(node, e.This):
+            return node.keyword.line
         if isinstance(node, e.ListLiteral):
             return node.bracket.line
         if isinstance(node, e.MapLiteral):

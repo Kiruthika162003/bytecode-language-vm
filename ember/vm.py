@@ -29,6 +29,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from ember.classes import BoundMethod, EmberClass, Instance
 from ember.closure import Closure, Upvalue
 from ember.errors import Arithmetic, Arity, IndexRange, StackFault, TypeMismatch, Unbound
 from ember.function import Function, NativeFunction
@@ -214,6 +215,14 @@ class VM:
                 self._frame().ip -= offset
             elif opcode == OpCode.CALL:
                 self._call(self._read_byte())
+            elif opcode == OpCode.CLASS:
+                self.stack.append(EmberClass(self._read_constant()))
+            elif opcode == OpCode.METHOD:
+                self._define_method(self._read_constant())
+            elif opcode == OpCode.GET_PROPERTY:
+                self._get_property(self._read_constant())
+            elif opcode == OpCode.SET_PROPERTY:
+                self._set_property(self._read_constant())
             elif opcode == OpCode.CLOSURE:
                 self._make_closure()
             elif opcode == OpCode.GET_UPVALUE:
@@ -307,6 +316,53 @@ class VM:
         else:
             self.stack.append(left >= right)
 
+    def _invoke_closure(self, closure: Closure, argument_count: int) -> None:
+        if argument_count != closure.arity:
+            raise Arity(
+                f"the function {closure.name!r} expects {closure.arity} "
+                f"arguments but received {argument_count}"
+            )
+        if len(self.frames) >= _MAX_FRAMES:
+            raise StackFault(
+                f"call depth exceeded {_MAX_FRAMES} frames; this is usually "
+                "runaway recursion with no base case"
+            )
+        base = len(self.stack) - argument_count - 1
+        self.frames.append(CallFrame(closure, base))
+
+    def _define_method(self, name: str) -> None:
+        method = self._pop()
+        klass = self._peek()
+        klass.methods[name] = method
+
+    def _get_property(self, name: str) -> None:
+        target = self._pop()
+        if not isinstance(target, Instance):
+            raise TypeMismatch(
+                f"only an instance has properties, and this is a {type_name(target)}"
+            )
+        if name in target.fields:
+            self.stack.append(target.fields[name])
+            return
+        method = target.klass.find_method(name)
+        if method is None:
+            raise Unbound(
+                f"the {target.klass.name} instance has no property {name!r}; it "
+                "was never assigned as a field nor declared as a method"
+            )
+        self.stack.append(BoundMethod(target, method))
+
+    def _set_property(self, name: str) -> None:
+        value = self._pop()
+        target = self._pop()
+        if not isinstance(target, Instance):
+            raise TypeMismatch(
+                f"only an instance can take a property, and this is a "
+                f"{type_name(target)}"
+            )
+        target.fields[name] = value
+        self.stack.append(value)
+
     def _make_closure(self) -> None:
         function = self._read_constant()
         upvalues: list[Upvalue] = []
@@ -322,6 +378,25 @@ class VM:
 
     def _call(self, argument_count: int) -> None:
         callee = self._peek(argument_count)
+        if isinstance(callee, EmberClass):
+            instance = Instance(callee)
+            # the class sits where the frame's slot 0 will be, so replacing it
+            # with the instance puts the receiver exactly where `this` expects
+            self.stack[len(self.stack) - argument_count - 1] = instance
+            initializer = callee.initializer
+            if initializer is None:
+                if argument_count != 0:
+                    raise Arity(
+                        f"the class {callee.name!r} has no initializer, so it "
+                        f"takes no arguments but received {argument_count}"
+                    )
+                return
+            self._invoke_closure(initializer, argument_count)
+            return
+        if isinstance(callee, BoundMethod):
+            self.stack[len(self.stack) - argument_count - 1] = callee.receiver
+            self._invoke_closure(callee.method, argument_count)
+            return
         if isinstance(callee, Closure):
             if argument_count != callee.arity:
                 raise Arity(
