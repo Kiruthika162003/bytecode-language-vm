@@ -48,6 +48,14 @@ class _Return(Exception):
         self.value = value
 
 
+class _Break(Exception):
+    """Raised to unwind out of a loop body, caught by the loop that owns it."""
+
+
+class _Continue(Exception):
+    """Raised to abandon one iteration, caught by the loop that owns it."""
+
+
 class TreeFunction:
     def __init__(self, declaration: s.FunctionStmt, closure: Environment) -> None:
         self.declaration = declaration
@@ -151,7 +159,12 @@ class TreeWalker:
                 self._execute(node.else_branch, env)
         elif isinstance(node, s.WhileStmt):
             while is_truthy(self._evaluate(node.condition, env)):
-                self._execute(node.body, env)
+                try:
+                    self._execute(node.body, env)
+                except _Break:
+                    break
+                except _Continue:
+                    continue
         elif isinstance(node, s.ForStmt):
             self._for(node, env)
         elif isinstance(node, s.FunctionStmt):
@@ -161,6 +174,10 @@ class TreeWalker:
         elif isinstance(node, s.ReturnStmt):
             value = self._evaluate(node.value, env) if node.value else None
             raise _Return(value)
+        elif isinstance(node, s.BreakStmt):
+            raise _Break
+        elif isinstance(node, s.ContinueStmt):
+            raise _Continue
         else:
             raise TypeMismatch(f"the tree-walker cannot execute {type(node).__name__}")
 
@@ -201,7 +218,14 @@ class TreeWalker:
         if node.initializer is not None:
             self._execute(node.initializer, loop_env)
         while node.condition is None or is_truthy(self._evaluate(node.condition, loop_env)):
-            self._execute(node.body, loop_env)
+            try:
+                self._execute(node.body, loop_env)
+            except _Break:
+                break
+            except _Continue:
+                # the increment still runs, matching the compiled form where
+                # continue targets the step rather than the condition
+                pass
             if node.increment is not None:
                 self._evaluate(node.increment, loop_env)
 
