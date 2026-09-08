@@ -61,10 +61,18 @@ def prune_statement(node: s.Stmt) -> s.Stmt:
     if isinstance(node, s.ForEachStmt):
         return s.ForEachStmt(node.variable, node.iterable, prune_statement(node.body))
     if isinstance(node, s.FunctionStmt):
-        return s.FunctionStmt(node.name, node.parameters, tuple(prune_body(node.body)))
+        return s.FunctionStmt(
+            node.name,
+            node.parameters,
+            tuple(prune_body(node.body)),
+            node.defaults,
+            node.is_variadic,
+        )
     if isinstance(node, s.ClassStmt):
         methods = tuple(
-            s.FunctionStmt(m.name, m.parameters, tuple(prune_body(m.body)))
+            s.FunctionStmt(
+                m.name, m.parameters, tuple(prune_body(m.body)), m.defaults, m.is_variadic
+            )
             for m in node.methods
         )
         return s.ClassStmt(node.name, node.superclass, methods)

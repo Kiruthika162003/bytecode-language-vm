@@ -213,7 +213,9 @@ def fold_statement(node: s.Stmt) -> s.Stmt:
         )
     if isinstance(node, s.FunctionStmt):
         body = tuple(fold_statement(inner) for inner in node.body)
-        return s.FunctionStmt(node.name, node.parameters, body)
+        return s.FunctionStmt(
+            node.name, node.parameters, body, node.defaults, node.is_variadic
+        )
     if isinstance(node, s.ClassStmt):
         methods = tuple(_fold_method(method) for method in node.methods)
         return s.ClassStmt(node.name, node.superclass, methods)
@@ -225,7 +227,9 @@ def fold_statement(node: s.Stmt) -> s.Stmt:
 
 def _fold_method(node: s.FunctionStmt) -> s.FunctionStmt:
     body = tuple(fold_statement(inner) for inner in node.body)
-    return s.FunctionStmt(node.name, node.parameters, body)
+    return s.FunctionStmt(
+            node.name, node.parameters, body, node.defaults, node.is_variadic
+        )
 
 
 def fold_program(statements: list[s.Stmt]) -> list[s.Stmt]:

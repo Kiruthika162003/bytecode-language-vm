@@ -214,9 +214,25 @@ def _for(node: s.ForStmt, depth: int) -> str:
     return head + _attached(node.body, depth)
 
 
+def _parameters(node: s.FunctionStmt) -> str:
+    names = [parameter.lexeme for parameter in node.parameters]
+    if node.is_variadic:
+        names[-1] = "..." + names[-1]
+    positional = len(names) - (1 if node.is_variadic else 0)
+    first_defaulted = positional - len(node.defaults)
+    rendered: list[str] = []
+    for index, name in enumerate(names):
+        if first_defaulted <= index < positional:
+            value = node.defaults[index - first_defaulted]
+            rendered.append(f"{name} = {_literal_text(value)}")
+        else:
+            rendered.append(name)
+    return ", ".join(rendered)
+
+
 def _function(node: s.FunctionStmt, depth: int, keyword: str) -> str:
     pad = _INDENT * depth
-    parameters = ", ".join(parameter.lexeme for parameter in node.parameters)
+    parameters = _parameters(node)
     head = f"{pad}{keyword}{node.name.lexeme}({parameters})"
     return head + " " + _block(node.body, depth).lstrip()
 

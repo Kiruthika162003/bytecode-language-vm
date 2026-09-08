@@ -90,6 +90,34 @@ class TreeFunction:
         return len(self.declaration.parameters)
 
     @property
+    def defaults(self) -> tuple[object, ...]:
+        return self.declaration.defaults
+
+    @property
+    def is_variadic(self) -> bool:
+        return self.declaration.is_variadic
+
+    @property
+    def named(self) -> int:
+        return self.arity - (1 if self.is_variadic else 0)
+
+    @property
+    def required(self) -> int:
+        return self.named - len(self.defaults)
+
+    def accepts(self, count: int) -> bool:
+        if count < self.required:
+            return False
+        return self.is_variadic or count <= self.named
+
+    def describe_arity(self) -> str:
+        if self.is_variadic:
+            return f"at least {self.required}"
+        if self.defaults:
+            return f"between {self.required} and {self.named}"
+        return str(self.required)
+
+    @property
     def name(self) -> str:
         return self.declaration.name.lexeme
 
@@ -124,6 +152,16 @@ class TreeClass:
     def arity(self) -> int:
         initializer = self.initializer
         return initializer.arity if initializer is not None else 0
+
+    def accepts(self, count: int) -> bool:
+        initializer = self.initializer
+        if initializer is None:
+            return count == 0
+        return initializer.accepts(count)
+
+    def describe_arity(self) -> str:
+        initializer = self.initializer
+        return initializer.describe_arity() if initializer is not None else "0"
 
     def __repr__(self) -> str:
         return f"<class {self.name}>"
@@ -508,13 +546,14 @@ class TreeWalker:
         raise TypeMismatch(f"a {type_name(callee)} is not callable")
 
     def _invoke(self, callee: TreeFunction, arguments: list[Any]) -> Any:
-        if len(arguments) != callee.arity:
+        if not callee.accepts(len(arguments)):
             raise Arity(
-                f"the function {callee.name!r} expects {callee.arity} "
-                f"arguments but received {len(arguments)}"
+                f"the function {callee.name!r} expects "
+                f"{callee.describe_arity()} arguments but received {len(arguments)}"
             )
+        settled = self._settle(callee, arguments)
         call_env = Environment(callee.closure)
-        pairs = zip(callee.declaration.parameters, arguments, strict=True)
+        pairs = zip(callee.declaration.parameters, settled, strict=True)
         for parameter, argument in pairs:
             call_env.define(parameter.lexeme, argument)
         try:
@@ -565,6 +604,26 @@ class TreeWalker:
         value = self._evaluate(node.value, env)
         target.fields[node.name.lexeme] = value
         return value
+
+    def _settle(self, callee: TreeFunction, arguments: list[Any]) -> list[Any]:
+        """Fill any missing defaults and gather a rest argument, as the machine does."""
+        supplied = list(arguments)
+        if callee.is_variadic:
+            extra = len(supplied) - callee.named
+            if extra > 0:
+                gathered = supplied[callee.named :]
+                supplied = supplied[: callee.named]
+                supplied.append(gathered)
+            else:
+                missing = callee.named - len(supplied)
+                if missing:
+                    supplied.extend(callee.defaults[len(callee.defaults) - missing :])
+                supplied.append([])
+            return supplied
+        missing = callee.named - len(supplied)
+        if missing:
+            supplied.extend(callee.defaults[len(callee.defaults) - missing :])
+        return supplied
 
     def _index(self, node: e.Index, env: Environment) -> Any:
         collection = self._evaluate(node.collection, env)

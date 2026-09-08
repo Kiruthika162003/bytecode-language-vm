@@ -501,12 +501,40 @@ class VM:
         else:
             self.stack.append(left >= right)
 
-    def _invoke_closure(self, closure: Closure, argument_count: int) -> None:
-        if argument_count != closure.arity:
+    def _settle_arguments(self, function: Function, argument_count: int) -> int:
+        """Check the count, fill any missing defaults, and gather a rest argument.
+
+        This runs before the frame is opened, so by the time the callee begins
+        every parameter slot already holds a value and the body never has to ask
+        whether it was passed one.
+        """
+        if not function.accepts(argument_count):
             raise Arity(
-                f"the function {closure.name!r} expects {closure.arity} "
-                f"arguments but received {argument_count}"
+                f"the function {function.name!r} expects "
+                f"{function.describe_arity()} arguments but received {argument_count}"
             )
+        if function.is_variadic:
+            extra = argument_count - (function.named)
+            if extra > 0:
+                gathered = self.stack[len(self.stack) - extra :]
+                del self.stack[len(self.stack) - extra :]
+                self.stack.append(list(gathered))
+            else:
+                # the named parameters may still be short of their defaults, and
+                # the rest parameter then receives an empty list
+                supplied = argument_count
+                for value in function.defaults[supplied - function.required :]:
+                    self.stack.append(value)
+                self.stack.append([])
+            return function.arity
+        missing = function.named - argument_count
+        if missing:
+            for value in function.defaults[len(function.defaults) - missing :]:
+                self.stack.append(value)
+        return function.arity
+
+    def _invoke_closure(self, closure: Closure, argument_count: int) -> None:
+        argument_count = self._settle_arguments(closure.function, argument_count)
         if len(self.frames) >= _MAX_FRAMES:
             raise StackFault(
                 f"call depth exceeded {_MAX_FRAMES} frames; this is usually "
@@ -622,11 +650,7 @@ class VM:
             self._invoke_closure(callee.method, argument_count)
             return
         if isinstance(callee, Closure):
-            if argument_count != callee.arity:
-                raise Arity(
-                    f"the function {callee.name!r} expects {callee.arity} "
-                    f"arguments but received {argument_count}"
-                )
+            argument_count = self._settle_arguments(callee.function, argument_count)
             if len(self.frames) >= _MAX_FRAMES:
                 raise StackFault(
                     f"call depth exceeded {_MAX_FRAMES} frames; this is usually "

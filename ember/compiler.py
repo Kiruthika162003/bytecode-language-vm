@@ -116,8 +116,17 @@ class _Loop:
 
 
 class _FunctionUnit:
-    def __init__(self, name: str, arity: int, enclosing: _FunctionUnit | None = None) -> None:
-        self.function = Function(name, arity, Chunk())
+    def __init__(
+        self,
+        name: str,
+        arity: int,
+        enclosing: _FunctionUnit | None = None,
+        defaults: tuple[object, ...] = (),
+        is_variadic: bool = False,
+    ) -> None:
+        self.function = Function(
+            name, arity, Chunk(), defaults=defaults, is_variadic=is_variadic
+        )
         self.scope = LocalScope()
         self.enclosing = enclosing
         self.upvalues: list[_Upvalue] = []
@@ -402,7 +411,13 @@ class Compiler:
 
     def _function(self, node: s.FunctionStmt) -> None:
         line = node.name.line
-        unit = _FunctionUnit(node.name.lexeme, len(node.parameters), enclosing=self._unit)
+        unit = _FunctionUnit(
+            node.name.lexeme,
+            len(node.parameters),
+            enclosing=self._unit,
+            defaults=node.defaults,
+            is_variadic=node.is_variadic,
+        )
         unit.scope.begin_scope()
         unit.scope.declare_reserved()
         for parameter in node.parameters:
@@ -456,7 +471,13 @@ class Compiler:
     def _method(self, node: s.FunctionStmt) -> None:
         line = node.name.line
         is_initializer = node.name.lexeme == INITIALIZER
-        unit = _FunctionUnit(node.name.lexeme, len(node.parameters), enclosing=self._unit)
+        unit = _FunctionUnit(
+            node.name.lexeme,
+            len(node.parameters),
+            enclosing=self._unit,
+            defaults=node.defaults,
+            is_variadic=node.is_variadic,
+        )
         unit.is_initializer = is_initializer
         unit.scope.begin_scope()
         unit.scope.declare_receiver()
