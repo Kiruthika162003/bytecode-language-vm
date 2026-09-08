@@ -64,15 +64,37 @@ class VM:
         self.open_upvalues: list[Upvalue] = []
 
     def define_native(
-        self, name: str, arity: int, handler: Callable[[list[Any]], Any]
+        self,
+        name: str,
+        arity: int,
+        handler: Callable[..., Any],
+        needs_machine: bool = False,
     ) -> None:
-        self.globals[name] = NativeFunction(name, arity, handler)
+        self.globals[name] = NativeFunction(name, arity, handler, needs_machine)
 
     def interpret(self, function: Function) -> Any:
         script = Closure(function)
         self.stack.append(script)
         self.frames.append(CallFrame(script, base=0))
         return self._run()
+
+    def call_value(self, callee: Any, arguments: list[Any]) -> Any:
+        """Call an Ember function from host code and run until it returns.
+
+        This is what lets a native like map invoke the function it was handed.
+        The callee and its arguments are pushed exactly as a compiled call
+        would push them, and if the call opened a frame the dispatch loop is
+        re-entered with a floor at the current depth, so it stops when that one
+        frame returns rather than running to the end of the program.
+        """
+        depth = len(self.frames)
+        self.stack.append(callee)
+        self.stack.extend(arguments)
+        self._call(len(arguments))
+        if len(self.frames) == depth:
+            # a native callee was handled inline and left its result on the stack
+            return self._pop()
+        return self._run(stop_depth=depth)
 
     def _capture_upvalue(self, location: int) -> Upvalue:
         # open upvalues are interned by slot so two closures capturing the same
@@ -142,7 +164,7 @@ class VM:
     def _peek(self, distance: int = 0) -> Any:
         return self.stack[-1 - distance]
 
-    def _run(self) -> Any:  # noqa: PLR0915
+    def _run(self, stop_depth: int = 0) -> Any:  # noqa: PLR0915
         while True:
             self.instruction_count += 1
             self.max_stack = max(self.max_stack, len(self.stack))
@@ -263,7 +285,10 @@ class VM:
                 result = self._pop()
                 frame = self.frames.pop()
                 self._close_upvalues(frame.base)
-                if not self.frames:
+                if len(self.frames) <= stop_depth:
+                    # either the script finished or a re-entrant call returned to
+                    # the host code that started it
+                    del self.stack[frame.base :]
                     return result
                 del self.stack[frame.base :]
                 self.stack.append(result)
@@ -465,8 +490,11 @@ class VM:
                     f"arguments but received {argument_count}"
                 )
             arguments = self.stack[len(self.stack) - argument_count :]
-            result = callee.handler(arguments)
             del self.stack[len(self.stack) - argument_count - 1 :]
+            if callee.needs_machine:
+                result = callee.handler(self, arguments)
+            else:
+                result = callee.handler(arguments)
             self.stack.append(result)
         else:
             raise TypeMismatch(

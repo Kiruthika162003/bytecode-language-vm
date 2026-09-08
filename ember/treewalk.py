@@ -134,8 +134,43 @@ class TreeWalker:
         self.output: list[str] = []
         self.steps = 0
 
-    def define_native(self, name: str, arity: int, handler: Any) -> None:
-        self.globals.define(name, NativeFunction(name, arity, handler))
+    def define_native(
+        self, name: str, arity: int, handler: Any, needs_machine: bool = False
+    ) -> None:
+        self.globals.define(name, NativeFunction(name, arity, handler, needs_machine))
+
+    def call_value(self, callee: Any, arguments: list[Any]) -> Any:
+        """Call an Ember function from host code, the counterpart of the machine's.
+
+        The tree-walker needs no re-entrancy machinery for this: evaluating a
+        call is already an ordinary recursive descent through Python's own
+        stack, so invoking a function from a native is the same operation the
+        interpreter performs everywhere else.
+        """
+        if isinstance(callee, TreeFunction):
+            return self._invoke(callee, arguments)
+        if isinstance(callee, TreeClass):
+            instance = TreeInstance(callee)
+            initializer = callee.initializer
+            if initializer is None:
+                if arguments:
+                    raise Arity(
+                        f"the class {callee.name!r} has no initializer, so it "
+                        f"takes no arguments but received {len(arguments)}"
+                    )
+                return instance
+            self._invoke(initializer.bind(instance), arguments)
+            return instance
+        if isinstance(callee, NativeFunction):
+            if len(arguments) != callee.arity:
+                raise Arity(
+                    f"the native function {callee.name!r} expects {callee.arity} "
+                    f"arguments but received {len(arguments)}"
+                )
+            if callee.needs_machine:
+                return callee.handler(self, arguments)
+            return callee.handler(arguments)
+        raise TypeMismatch(f"a {type_name(callee)} is not callable")
 
     def run(self, statements: list[s.Stmt]) -> None:
         for statement in statements:
@@ -363,6 +398,8 @@ class TreeWalker:
                     f"the native function {callee.name!r} expects {callee.arity} "
                     f"arguments but received {len(arguments)}"
                 )
+            if callee.needs_machine:
+                return callee.handler(self, arguments)
             return callee.handler(arguments)
         raise TypeMismatch(f"a {type_name(callee)} is not callable")
 

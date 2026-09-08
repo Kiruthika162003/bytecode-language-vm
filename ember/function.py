@@ -47,7 +47,8 @@ class Function:
 class NativeFunction:
     name: str
     arity: int
-    handler: Callable[[list[Any]], Any]
+    handler: Callable[..., Any]
+    needs_machine: bool = False
 
     def __repr__(self) -> str:
         return f"<native {self.name}>"
