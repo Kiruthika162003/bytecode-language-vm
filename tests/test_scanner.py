@@ -52,6 +52,14 @@ class TestOperators:
             TokenKind.EQUAL,
         ]
 
+    def test_a_lone_slash_is_division_not_a_comment(self):
+        assert kinds("10 / 4") == [
+            TokenKind.NUMBER,
+            TokenKind.SLASH,
+            TokenKind.NUMBER,
+            TokenKind.EOF,
+        ]
+
 
 class TestLiterals:
     def test_a_string_literal_is_unescaped(self):

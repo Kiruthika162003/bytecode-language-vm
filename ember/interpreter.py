@@ -1,0 +1,43 @@
+"""The interpreter facade: one call that carries source all the way to a result.
+
+The stages of this runtime, scanning, parsing, compiling, and executing,
+are kept in separate modules so each can be understood alone, but almost
+every user of the runtime wants all of them at once: give me source, run
+it, tell me what it printed. This module is that front door. It threads a
+program through the whole pipeline and hands back the machine that ran
+it, so a caller can read the printed output and the instrumentation, the
+instruction count and the deepest stack, without reassembling the stages
+itself. Keeping the facade thin is the point. It adds no behavior of its
+own beyond wiring, so that a test or a tool exercising the pipeline
+exercises the real stages and not a parallel shortcut that could drift
+from them. Two entry points are offered because two needs recur: one
+returns the whole machine for a caller that wants to inspect its state,
+and one returns just the list of printed lines for the common case of
+checking what a program said. Both install the standard builtins by
+default so that a program can reach the small library the language ships
+with, and both accept turning that off for a test that wants the language
+bare. Any failure along the way surfaces as the same exception family the
+stages raise, so a caller catches one kind of error regardless of which
+stage produced it.
+"""
+
+from __future__ import annotations
+
+from ember.builtins import install_builtins
+from ember.compiler import compile_program
+from ember.parser import parse
+from ember.scanner import scan
+from ember.vm import VM
+
+
+def run(source: str, with_builtins: bool = True) -> VM:
+    function = compile_program(parse(scan(source)))
+    machine = VM()
+    if with_builtins:
+        install_builtins(machine)
+    machine.interpret(function)
+    return machine
+
+
+def run_output(source: str, with_builtins: bool = True) -> list[str]:
+    return run(source, with_builtins=with_builtins).output
