@@ -48,6 +48,14 @@ class TokenKind(Enum):
     SLASH_EQUAL = auto()
     PERCENT_EQUAL = auto()
 
+    AMPERSAND = auto()
+    PIPE = auto()
+    CARET = auto()
+    TILDE = auto()
+    LESS_LESS = auto()
+    GREATER_GREATER = auto()
+    QUESTION = auto()
+
     BANG = auto()
     BANG_EQUAL = auto()
     EQUAL = auto()

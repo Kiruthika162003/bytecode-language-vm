@@ -31,15 +31,20 @@ from ember.tokenkind import TokenKind
 class Precedence(IntEnum):
     NONE = 0
     ASSIGNMENT = 1
-    OR = 2
-    AND = 3
-    EQUALITY = 4
-    COMPARISON = 5
-    TERM = 6
-    FACTOR = 7
-    UNARY = 8
-    CALL = 9
-    PRIMARY = 10
+    CONDITIONAL = 2
+    OR = 3
+    AND = 4
+    BIT_OR = 5
+    BIT_XOR = 6
+    BIT_AND = 7
+    EQUALITY = 8
+    COMPARISON = 9
+    SHIFT = 10
+    TERM = 11
+    FACTOR = 12
+    UNARY = 13
+    CALL = 14
+    PRIMARY = 15
 
 
 _INFIX: dict[TokenKind, Precedence] = {
@@ -51,6 +56,11 @@ _INFIX: dict[TokenKind, Precedence] = {
     TokenKind.LESS_EQUAL: Precedence.COMPARISON,
     TokenKind.GREATER: Precedence.COMPARISON,
     TokenKind.GREATER_EQUAL: Precedence.COMPARISON,
+    TokenKind.PIPE: Precedence.BIT_OR,
+    TokenKind.CARET: Precedence.BIT_XOR,
+    TokenKind.AMPERSAND: Precedence.BIT_AND,
+    TokenKind.LESS_LESS: Precedence.SHIFT,
+    TokenKind.GREATER_GREATER: Precedence.SHIFT,
     TokenKind.PLUS: Precedence.TERM,
     TokenKind.MINUS: Precedence.TERM,
     TokenKind.STAR: Precedence.FACTOR,

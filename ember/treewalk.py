@@ -140,6 +140,14 @@ class TreeInstance:
 
 _SUPER = "super"
 
+_BITWISE = (
+    TokenKind.AMPERSAND,
+    TokenKind.PIPE,
+    TokenKind.CARET,
+    TokenKind.LESS_LESS,
+    TokenKind.GREATER_GREATER,
+)
+
 _COMPARISONS = (
     TokenKind.LESS,
     TokenKind.LESS_EQUAL,
@@ -150,6 +158,14 @@ _COMPARISONS = (
 
 def _is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _whole(value: Any) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeMismatch(
+            f"bitwise operations need integers, not a {type_name(value)}"
+        )
+    return value
 
 
 class TreeWalker:
@@ -345,6 +361,10 @@ class TreeWalker:
             return self._binary(node, env)
         if isinstance(node, e.Logical):
             return self._logical(node, env)
+        if isinstance(node, e.Conditional):
+            if is_truthy(self._evaluate(node.condition, env)):
+                return self._evaluate(node.when_true, env)
+            return self._evaluate(node.when_false, env)
         if isinstance(node, e.Call):
             return self._call(node, env)
         if isinstance(node, e.Index):
@@ -371,6 +391,8 @@ class TreeWalker:
             if not _is_number(value):
                 raise TypeMismatch(f"cannot negate a {type_name(value)}")
             return -value
+        if node.operator.kind == TokenKind.TILDE:
+            return ~_whole(value)
         return not is_truthy(value)
 
     def _binary(self, node: e.Binary, env: Environment) -> Any:
@@ -385,6 +407,8 @@ class TreeWalker:
             return self._add(left, right)
         if kind in _COMPARISONS:
             return self._compare(kind, left, right)
+        if kind in _BITWISE:
+            return self._bitwise(kind, left, right)
         return self._numeric(kind, left, right)
 
     def _add(self, left: Any, right: Any) -> Any:
@@ -397,6 +421,23 @@ class TreeWalker:
         raise TypeMismatch(
             f"cannot add a {type_name(left)} and a {type_name(right)}"
         )
+
+    def _bitwise(self, kind: TokenKind, left: Any, right: Any) -> int:
+        a = _whole(left)
+        b = _whole(right)
+        if kind == TokenKind.AMPERSAND:
+            return a & b
+        if kind == TokenKind.PIPE:
+            return a | b
+        if kind == TokenKind.CARET:
+            return a ^ b
+        if b < 0:
+            raise Arithmetic(
+                f"cannot shift by the negative amount {b}; shift the other way"
+            )
+        if kind == TokenKind.LESS_LESS:
+            return a << b
+        return a >> b
 
     def _numeric(self, kind: TokenKind, left: Any, right: Any) -> Any:
         if not (_is_number(left) and _is_number(right)):

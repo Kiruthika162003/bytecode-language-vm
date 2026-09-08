@@ -46,6 +46,11 @@ _SINGLE = {
     ".": TokenKind.DOT,
     ";": TokenKind.SEMICOLON,
     ":": TokenKind.COLON,
+    "&": TokenKind.AMPERSAND,
+    "|": TokenKind.PIPE,
+    "^": TokenKind.CARET,
+    "~": TokenKind.TILDE,
+    "?": TokenKind.QUESTION,
 }
 
 _MAYBE_EQUAL = {
@@ -133,6 +138,12 @@ class Scanner:
 
     def _scan_one(self, start: Position) -> Token | None:
         char = self._cursor.advance()
+        # the shifts are checked before the comparison operators, since '<' would
+        # otherwise be taken as less-than with a stray '<' following it
+        if char == "<" and self._cursor.match("<"):
+            return self._make(TokenKind.LESS_LESS, start)
+        if char == ">" and self._cursor.match(">"):
+            return self._make(TokenKind.GREATER_GREATER, start)
         if char in _SINGLE:
             return self._make(_SINGLE[char], start)
         if char in _MAYBE_EQUAL:

@@ -55,6 +55,16 @@ from ember.valueops import (
 _MAX_FRAMES = 1024
 
 
+def _whole(value: Any, operation: str) -> int:
+    """Require an integer, since a bit pattern is only defined for whole numbers."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeMismatch(
+            f"cannot {operation} a {type_name(value)}; bitwise operations need "
+            "integers, and a float has no bit pattern in this language"
+        )
+    return value
+
+
 class Handler:
     """Where to resume, and what to restore, when something is thrown.
 
@@ -275,6 +285,17 @@ class VM:
                     OpCode.MODULO,
                 ):
                     self._arithmetic(opcode)
+                elif opcode in (
+                    OpCode.BIT_AND,
+                    OpCode.BIT_OR,
+                    OpCode.BIT_XOR,
+                    OpCode.SHIFT_LEFT,
+                    OpCode.SHIFT_RIGHT,
+                ):
+                    self._bitwise(opcode)
+                elif opcode == OpCode.BIT_NOT:
+                    value = self._pop()
+                    self.stack.append(~_whole(value, "invert"))
                 elif opcode == OpCode.NEGATE:
                     value = self._pop()
                     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -413,6 +434,27 @@ class VM:
             f"cannot add a {type_name(left)} and a {type_name(right)}; add "
             "two numbers, two strings, or two lists"
         )
+
+    def _bitwise(self, opcode: OpCode) -> None:
+        right = self._pop()
+        left = self._pop()
+        a = _whole(left, opcode.name.lower())
+        b = _whole(right, opcode.name.lower())
+        if opcode == OpCode.BIT_AND:
+            self.stack.append(a & b)
+        elif opcode == OpCode.BIT_OR:
+            self.stack.append(a | b)
+        elif opcode == OpCode.BIT_XOR:
+            self.stack.append(a ^ b)
+        else:
+            if b < 0:
+                raise Arithmetic(
+                    f"cannot shift by the negative amount {b}; shift the other way"
+                )
+            if opcode == OpCode.SHIFT_LEFT:
+                self.stack.append(a << b)
+            else:
+                self.stack.append(a >> b)
 
     def _arithmetic(self, opcode: OpCode) -> None:
         right = self._pop()
