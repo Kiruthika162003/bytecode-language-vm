@@ -29,6 +29,7 @@ import math
 from typing import Any
 
 from ember.errors import Arithmetic, IndexRange, TypeMismatch
+from ember.higherorder import higher_order_names, install_higher_order
 from ember.listlib import install_list_library, list_names
 from ember.mathlib import install_math_library, math_names
 from ember.stringlib import install_string_library, string_names
@@ -213,8 +214,10 @@ def install_builtins(machine: VM) -> None:
     install_string_library(machine)
     install_list_library(machine)
     install_math_library(machine)
+    install_higher_order(machine)
 
 
 def builtin_names() -> list[str]:
     names = set(_REGISTRY) | set(string_names()) | set(list_names()) | set(math_names())
+    names |= set(higher_order_names())
     return sorted(names)
