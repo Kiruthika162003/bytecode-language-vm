@@ -119,7 +119,103 @@ def _count(args: list[Any]) -> int:
     return sum(1 for item in items if values_equal(item, target))
 
 
+def _whole_count(value: Any, who: str) -> int:
+    """Require a non-negative integer, for the functions that take a quantity."""
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeMismatch(f"{who} needs an integer count, not a {type_name(value)}")
+    if value < 0:
+        raise IndexRange(f"{who} needs a count of zero or more")
+    return value
+
+
+def _take(args: list[Any]) -> list[Any]:
+    items = _list(args[0], "take")
+    # taking more than there is yields everything rather than failing, which is
+    # what makes take usable on a list whose length the caller does not know
+    return items[: _whole_count(args[1], "take")]
+
+
+def _drop(args: list[Any]) -> list[Any]:
+    items = _list(args[0], "drop")
+    return items[_whole_count(args[1], "drop") :]
+
+
+def _flatten(args: list[Any]) -> list[Any]:
+    items = _list(args[0], "flatten")
+    result: list[Any] = []
+    for item in items:
+        if isinstance(item, list):
+            result.extend(item)
+        else:
+            result.append(item)
+    # one level only, so a list of lists of lists keeps its innermost nesting;
+    # flattening all the way would make the depth invisible to the caller
+    return result
+
+
+def _chunk(args: list[Any]) -> list[Any]:
+    items = _list(args[0], "chunk")
+    size = _whole_count(args[1], "chunk")
+    if size == 0:
+        raise IndexRange("chunk needs a size of at least one")
+    return [items[start : start + size] for start in range(0, len(items), size)]
+
+
+def _zip_lists(args: list[Any]) -> list[Any]:
+    left = _list(args[0], "zip")
+    right = _list(args[1], "zip")
+    # stops at the shorter, so no position is invented to fill a gap
+    return [[a, b] for a, b in zip(left, right, strict=False)]
+
+
+def _repeat_list(args: list[Any]) -> list[Any]:
+    items = _list(args[0], "repeat_list")
+    return items * _whole_count(args[1], "repeat_list")
+
+
+def _is_empty_list(args: list[Any]) -> bool:
+    return not _list(args[0], "is_empty_list")
+
+
+def _copy_list(args: list[Any]) -> list[Any]:
+    return list(_list(args[0], "copy_list"))
+
+
+def _insert(args: list[Any]) -> list[Any]:
+    items = _list(args[0], "insert")
+    at = args[1]
+    if isinstance(at, bool) or not isinstance(at, int):
+        raise TypeMismatch("insert needs an integer position")
+    if not 0 <= at <= len(items):
+        raise IndexRange(
+            f"the position {at} is outside a list of length {len(items)}; a position "
+            "equal to the length appends"
+        )
+    items.insert(at, args[2])
+    return items
+
+
+def _remove_at(args: list[Any]) -> Any:
+    items = _list(args[0], "remove_at")
+    at = args[1]
+    if isinstance(at, bool) or not isinstance(at, int):
+        raise TypeMismatch("remove_at needs an integer position")
+    if not 0 <= at < len(items):
+        raise IndexRange(f"the position {at} is outside a list of length {len(items)}")
+    return items.pop(at)
+
+
 _REGISTRY: dict[str, tuple[int, Any]] = {
+    "take": (2, _take),
+    "drop": (2, _drop),
+    "flatten": (1, _flatten),
+    "chunk": (2, _chunk),
+    "zip": (2, _zip_lists),
+    "repeat_list": (2, _repeat_list),
+    "is_empty_list": (1, _is_empty_list),
+    "copy_list": (1, _copy_list),
+    "insert": (3, _insert),
+    "remove_at": (2, _remove_at),
     "first": (1, _first),
     "last": (1, _last),
     "slice": (3, _slice),

@@ -139,7 +139,65 @@ def _from_code(args: list[Any]) -> str:
     return chr(code)
 
 
+def _pad_left(args: list[Any]) -> str:
+    text = _string(args[0], "pad_left")
+    return _padded(text, args[1], _string(args[2], "pad_left"), "pad_left", left=True)
+
+
+def _pad_right(args: list[Any]) -> str:
+    text = _string(args[0], "pad_right")
+    return _padded(text, args[1], _string(args[2], "pad_right"), "pad_right", left=False)
+
+
+def _padded(text: str, width: Any, filler: str, who: str, left: bool) -> str:
+    if isinstance(width, bool) or not isinstance(width, int):
+        raise TypeMismatch(f"{who} needs an integer width")
+    if len(filler) != 1:
+        raise IndexRange(f"{who} needs a single character to pad with")
+    if width <= len(text):
+        # already wide enough, so nothing is added and nothing is cut away
+        return text
+    padding = filler * (width - len(text))
+    return padding + text if left else text + padding
+
+
+def _lines(args: list[Any]) -> list[str]:
+    return _string(args[0], "lines").splitlines()
+
+
+def _words(args: list[Any]) -> list[str]:
+    return _string(args[0], "words").split()
+
+
+def _last_index_of(args: list[Any]) -> int:
+    return _string(args[0], "last_index_of").rfind(_string(args[1], "last_index_of"))
+
+
+def _count_of(args: list[Any]) -> int:
+    text = _string(args[0], "count_of")
+    needle = _string(args[1], "count_of")
+    if needle == "":
+        raise IndexRange("count_of needs a non-empty string to look for")
+    return text.count(needle)
+
+
+def _reverse_text(args: list[Any]) -> str:
+    return _string(args[0], "reverse_text")[::-1]
+
+
+def _is_blank(args: list[Any]) -> bool:
+    return _string(args[0], "is_blank").strip() == ""
+
+
 _REGISTRY: dict[str, tuple[int, Any]] = {
+    "pad_left": (3, _pad_left),
+    "pad_right": (3, _pad_right),
+    "lines": (1, _lines),
+    "words": (1, _words),
+    "last_index_of": (2, _last_index_of),
+    "count_of": (2, _count_of),
+    "reverse_text": (1, _reverse_text),
+    "is_blank": (1, _is_blank),
     "upper": (1, _upper),
     "lower": (1, _lower),
     "trim": (1, _trim),
