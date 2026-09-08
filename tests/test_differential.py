@@ -33,6 +33,11 @@ SHARED_PROGRAMS = [
     ),
     "print range(5); print contains([1, 2, 3], 2);",
     "fn fact(n) { if (n <= 1) return 1; return n * fact(n - 1); } print fact(6);",
+    'print upper("hello"); print split("a,b,c", ","); print join(["x", "y"], "-");',
+    "print sorted([5, 3, 8, 1]); print reversed([1, 2, 3]); print sum([1, 2, 3, 4]);",
+    "print pow(2, 8); print gcd(24, 18); print factorial(6); print clamp(20, 0, 9);",
+    'print substring("abcdef", 2, 5); print index_of("abcdef", "cd");',
+    "print unique([1, 2, 2, 3, 3, 3]); print concat([1], [2, 3]);",
 ]
 
 
