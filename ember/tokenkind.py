@@ -70,6 +70,7 @@ class TokenKind(Enum):
     FOR = auto()
     BREAK = auto()
     CONTINUE = auto()
+    IN = auto()
     FN = auto()
     RETURN = auto()
     LET = auto()
@@ -111,6 +112,7 @@ _KEYWORD_KINDS = frozenset(
         TokenKind.FOR,
         TokenKind.BREAK,
         TokenKind.CONTINUE,
+        TokenKind.IN,
         TokenKind.FN,
         TokenKind.RETURN,
         TokenKind.LET,

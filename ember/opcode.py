@@ -81,6 +81,8 @@ class OpCode(IntEnum):
     SET_PROPERTY = 42
     INHERIT = 43
     GET_SUPER = 44
+    ITER_PREPARE = 45
+    ITER_SIZE = 46
 
 
 # How many operand bytes follow each opcode. A jump carries a two-byte
@@ -134,6 +136,8 @@ OPERAND_BYTES: dict[OpCode, int] = {
     OpCode.SET_PROPERTY: 1,
     OpCode.INHERIT: 0,
     OpCode.GET_SUPER: 1,
+    OpCode.ITER_PREPARE: 0,
+    OpCode.ITER_SIZE: 0,
 }
 
 

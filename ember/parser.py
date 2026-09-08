@@ -73,6 +73,12 @@ class Parser:
     def _previous(self) -> Token:
         return self._tokens[self._current - 1]
 
+    def _peek_next(self) -> Token:
+        following = self._current + 1
+        if following >= len(self._tokens):
+            return self._tokens[-1]
+        return self._tokens[following]
+
     def _at_end(self) -> bool:
         return self._peek().kind == TokenKind.EOF
 
@@ -275,6 +281,10 @@ class Parser:
 
     def _for_statement(self) -> s.Stmt:
         self._consume(TokenKind.LEFT_PAREN, "a for clause must start with '('")
+        # one token of lookahead separates the two loop forms: a name followed
+        # by `in` is iteration, anything else is the three-clause counting loop
+        if self._check(TokenKind.IDENTIFIER) and self._peek_next().kind == TokenKind.IN:
+            return self._for_each_statement()
         if self._match(TokenKind.SEMICOLON):
             initializer: s.Stmt | None = None
         elif self._match(TokenKind.LET):
@@ -287,6 +297,14 @@ class Parser:
         self._consume(TokenKind.RIGHT_PAREN, "a for clause must end with ')'")
         body = self._loop_body()
         return s.ForStmt(initializer, condition, increment, body)
+
+    def _for_each_statement(self) -> s.Stmt:
+        variable = self._consume(TokenKind.IDENTIFIER, "an iteration needs a name")
+        self._consume(TokenKind.IN, "an iteration name must be followed by 'in'")
+        iterable = self._expression()
+        self._consume(TokenKind.RIGHT_PAREN, "a for clause must end with ')'")
+        body = self._loop_body()
+        return s.ForEachStmt(variable, iterable, body)
 
     def _return_statement(self) -> s.Stmt:
         keyword = self._previous()

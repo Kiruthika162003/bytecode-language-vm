@@ -28,6 +28,7 @@ from typing import Any
 
 from ember.classes import BoundMethod
 from ember.closure import Closure
+from ember.errors import TypeMismatch
 from ember.function import Function, NativeFunction
 
 
@@ -108,6 +109,28 @@ def stringify(value: Any) -> str:
         pairs = ", ".join(f"{_element(k)}: {_element(v)}" for k, v in value.items())
         return "{" + pairs + "}"
     return str(value)
+
+
+def iteration_source(value: Any) -> list[Any]:
+    """Reduce an iterable value to the list an iteration walks by index.
+
+    A list iterates over its elements and a string over its characters, both
+    already positional. A map iterates over its keys, which is the choice worth
+    naming: iterating the values would leave a program unable to reach the key
+    it was looking at, while a key can always fetch its value, so keys are the
+    more useful half of the pair. This lives beside the other value rules
+    because which order a collection yields is part of what the language means,
+    not a detail of either backend, and both consult this one answer.
+    """
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        return list(value)
+    if isinstance(value, dict):
+        return list(value.keys())
+    raise TypeMismatch(
+        f"a {type_name(value)} cannot be iterated; iterate a list, string, or map"
+    )
 
 
 def _element(value: Any) -> str:

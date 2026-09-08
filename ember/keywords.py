@@ -32,6 +32,7 @@ KEYWORDS: dict[str, TokenKind] = {
     "for": TokenKind.FOR,
     "break": TokenKind.BREAK,
     "continue": TokenKind.CONTINUE,
+    "in": TokenKind.IN,
     "fn": TokenKind.FN,
     "return": TokenKind.RETURN,
     "let": TokenKind.LET,

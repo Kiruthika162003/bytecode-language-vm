@@ -79,6 +79,13 @@ class ForStmt(Stmt):
 
 
 @dataclass(frozen=True)
+class ForEachStmt(Stmt):
+    variable: Token
+    iterable: Expr
+    body: Stmt
+
+
+@dataclass(frozen=True)
 class FunctionStmt(Stmt):
     name: Token
     parameters: tuple[Token, ...]
