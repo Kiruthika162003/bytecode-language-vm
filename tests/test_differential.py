@@ -54,6 +54,35 @@ SHARED_PROGRAMS = [
         "fn outer() { let x = 7; fn mid() { fn inner() { return x; }"
         " return inner(); } return mid(); } print outer();"
     ),
+    'class G { greet() { return "hi"; } } print G().greet();',
+    (
+        "class Point { init(x, y) { this.x = x; this.y = y; }"
+        " sum() { return this.x + this.y; } }"
+        " let p = Point(3, 4); print p.x; print p.sum();"
+    ),
+    (
+        "class C { init() { this.n = 0; } bump() { this.n = this.n + 1; return this.n; } }"
+        " let c = C(); print c.bump(); print c.bump(); print c.bump();"
+    ),
+    "class T { m() { return 1; } } print type(T); print type(T()); print T; print T();",
+    (
+        'class S { name() { return "m"; } } let s = S();'
+        ' print s.name(); s.name = "f"; print s.name;'
+    ),
+    (
+        "class D { init(v) { this.v = v; } get() { return this.v; } }"
+        " let d = D(7); let f = d.get; print f(); print f;"
+    ),
+    (
+        "class E { init() { this.v = 9; }"
+        " make() { fn inner() { return this.v; } return inner; } }"
+        " print E().make()();"
+    ),
+    (
+        "class Acc { init() { this.t = 0; } add(n) { this.t = this.t + n; return this; } }"
+        " print Acc().add(3).add(4).t;"
+    ),
+    "class B { init(v) { this.v = v; } } let b = B(1); b.v = 9; b.v += 1; print b.v;",
 ]
 
 
@@ -72,6 +101,12 @@ class TestErrorsAgree:
             "fn f(x) { return x; } f();",
             "const k = 1; k = 2;",
             "let a = [1]; print a[9];",
+            "print this;",
+            "class C { init() { return 5; } }",
+            "class C {} print C().missing;",
+            "let x = 5; print x.f;",
+            "class C {} C(1);",
+            "class C { m() { return 1; } m() { return 2; } }",
         ],
     )
     def test_both_backends_reject_the_same_programs(self, source: str):

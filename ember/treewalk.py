@@ -30,8 +30,9 @@ from typing import Any
 
 from ember import exprnodes as e
 from ember import stmtnodes as s
+from ember.classes import INITIALIZER
 from ember.environment import Environment
-from ember.errors import Arithmetic, Arity, IndexRange, TypeMismatch
+from ember.errors import Arithmetic, Arity, IndexRange, Resolve, TypeMismatch, Unbound
 from ember.function import NativeFunction
 from ember.tokenkind import TokenKind
 from ember.valueops import is_truthy, stringify, type_name, values_equal
@@ -56,8 +57,49 @@ class TreeFunction:
     def name(self) -> str:
         return self.declaration.name.lexeme
 
+    @property
+    def is_initializer(self) -> bool:
+        return self.name == INITIALIZER
+
+    def bind(self, receiver: TreeInstance) -> TreeFunction:
+        # binding a method is just closing it over an environment in which
+        # `this` names the receiver, so no separate bound-method type is needed
+        bound = Environment(self.closure)
+        bound.define("this", receiver)
+        return TreeFunction(self.declaration, bound)
+
     def __repr__(self) -> str:
         return f"<fn {self.name}>"
+
+
+class TreeClass:
+    def __init__(self, name: str) -> None:
+        self.name = name
+        self.methods: dict[str, TreeFunction] = {}
+
+    def find_method(self, name: str) -> TreeFunction | None:
+        return self.methods.get(name)
+
+    @property
+    def initializer(self) -> TreeFunction | None:
+        return self.methods.get(INITIALIZER)
+
+    @property
+    def arity(self) -> int:
+        initializer = self.initializer
+        return initializer.arity if initializer is not None else 0
+
+    def __repr__(self) -> str:
+        return f"<class {self.name}>"
+
+
+class TreeInstance:
+    def __init__(self, klass: TreeClass) -> None:
+        self.klass = klass
+        self.fields: dict[str, Any] = {}
+
+    def __repr__(self) -> str:
+        return f"<{self.klass.name} instance>"
 
 
 _COMPARISONS = (
@@ -108,11 +150,26 @@ class TreeWalker:
             self._for(node, env)
         elif isinstance(node, s.FunctionStmt):
             env.define(node.name.lexeme, TreeFunction(node, env))
+        elif isinstance(node, s.ClassStmt):
+            self._class(node, env)
         elif isinstance(node, s.ReturnStmt):
             value = self._evaluate(node.value, env) if node.value else None
             raise _Return(value)
         else:
             raise TypeMismatch(f"the tree-walker cannot execute {type(node).__name__}")
+
+    def _class(self, node: s.ClassStmt, env: Environment) -> None:
+        klass = TreeClass(node.name.lexeme)
+        seen: set[str] = set()
+        for method in node.methods:
+            if method.name.lexeme in seen:
+                raise Resolve(
+                    f"the class {node.name.lexeme!r} declares the method "
+                    f"{method.name.lexeme!r} twice; remove one of them"
+                )
+            seen.add(method.name.lexeme)
+            klass.methods[method.name.lexeme] = TreeFunction(method, env)
+        env.define(node.name.lexeme, klass)
 
     def _execute_block(self, statements: tuple[s.Stmt, ...], env: Environment) -> None:
         for statement in statements:
@@ -151,6 +208,12 @@ class TreeWalker:
             return self._index(node, env)
         if isinstance(node, e.SetIndex):
             return self._set_index(node, env)
+        if isinstance(node, e.Get):
+            return self._get_property(node, env)
+        if isinstance(node, e.Set):
+            return self._set_property(node, env)
+        if isinstance(node, e.This):
+            return env.get("this")
         if isinstance(node, e.ListLiteral):
             return [self._evaluate(item, env) for item in node.elements]
         if isinstance(node, e.MapLiteral):
@@ -233,21 +296,20 @@ class TreeWalker:
     def _call(self, node: e.Call, env: Environment) -> Any:
         callee = self._evaluate(node.callee, env)
         arguments = [self._evaluate(argument, env) for argument in node.arguments]
+        if isinstance(callee, TreeClass):
+            instance = TreeInstance(callee)
+            initializer = callee.initializer
+            if initializer is None:
+                if arguments:
+                    raise Arity(
+                        f"the class {callee.name!r} has no initializer, so it "
+                        f"takes no arguments but received {len(arguments)}"
+                    )
+                return instance
+            self._invoke(initializer.bind(instance), arguments)
+            return instance
         if isinstance(callee, TreeFunction):
-            if len(arguments) != callee.arity:
-                raise Arity(
-                    f"the function {callee.name!r} expects {callee.arity} "
-                    f"arguments but received {len(arguments)}"
-                )
-            call_env = Environment(callee.closure)
-            pairs = zip(callee.declaration.parameters, arguments, strict=True)
-            for parameter, argument in pairs:
-                call_env.define(parameter.lexeme, argument)
-            try:
-                self._execute_block(callee.declaration.body, call_env)
-            except _Return as signal:
-                return signal.value
-            return None
+            return self._invoke(callee, arguments)
         if isinstance(callee, NativeFunction):
             if len(arguments) != callee.arity:
                 raise Arity(
@@ -256,6 +318,54 @@ class TreeWalker:
                 )
             return callee.handler(arguments)
         raise TypeMismatch(f"a {type_name(callee)} is not callable")
+
+    def _invoke(self, callee: TreeFunction, arguments: list[Any]) -> Any:
+        if len(arguments) != callee.arity:
+            raise Arity(
+                f"the function {callee.name!r} expects {callee.arity} "
+                f"arguments but received {len(arguments)}"
+            )
+        call_env = Environment(callee.closure)
+        pairs = zip(callee.declaration.parameters, arguments, strict=True)
+        for parameter, argument in pairs:
+            call_env.define(parameter.lexeme, argument)
+        try:
+            self._execute_block(callee.declaration.body, call_env)
+        except _Return as signal:
+            if callee.is_initializer:
+                return call_env.get("this")
+            return signal.value
+        if callee.is_initializer:
+            return call_env.get("this")
+        return None
+
+    def _get_property(self, node: e.Get, env: Environment) -> Any:
+        target = self._evaluate(node.target, env)
+        if not isinstance(target, TreeInstance):
+            raise TypeMismatch(
+                f"only an instance has properties, and this is a {type_name(target)}"
+            )
+        name = node.name.lexeme
+        if name in target.fields:
+            return target.fields[name]
+        method = target.klass.find_method(name)
+        if method is None:
+            raise Unbound(
+                f"the {target.klass.name} instance has no property {name!r}; it "
+                "was never assigned as a field nor declared as a method"
+            )
+        return method.bind(target)
+
+    def _set_property(self, node: e.Set, env: Environment) -> Any:
+        target = self._evaluate(node.target, env)
+        if not isinstance(target, TreeInstance):
+            raise TypeMismatch(
+                f"only an instance can take a property, and this is a "
+                f"{type_name(target)}"
+            )
+        value = self._evaluate(node.value, env)
+        target.fields[node.name.lexeme] = value
+        return value
 
     def _index(self, node: e.Index, env: Environment) -> Any:
         collection = self._evaluate(node.collection, env)
