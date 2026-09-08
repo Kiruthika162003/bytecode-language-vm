@@ -27,6 +27,7 @@ from ember.builtins import install_builtins
 from ember.compiler import compile_program
 from ember.parser import parse
 from ember.scanner import scan
+from ember.treewalk import TreeWalker
 from ember.vm import VM
 
 
@@ -41,3 +42,15 @@ def run(source: str, with_builtins: bool = True) -> VM:
 
 def run_output(source: str, with_builtins: bool = True) -> list[str]:
     return run(source, with_builtins=with_builtins).output
+
+
+def run_treewalk(source: str, with_builtins: bool = True) -> TreeWalker:
+    walker = TreeWalker()
+    if with_builtins:
+        install_builtins(walker)
+    walker.run(parse(scan(source)))
+    return walker
+
+
+def run_treewalk_output(source: str, with_builtins: bool = True) -> list[str]:
+    return run_treewalk(source, with_builtins=with_builtins).output
