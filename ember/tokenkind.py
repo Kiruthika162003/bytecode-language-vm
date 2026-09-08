@@ -81,6 +81,9 @@ class TokenKind(Enum):
     BREAK = auto()
     CONTINUE = auto()
     IN = auto()
+    MATCH = auto()
+    CASE = auto()
+    DEFAULT = auto()
     TRY = auto()
     CATCH = auto()
     THROW = auto()
@@ -127,6 +130,9 @@ _KEYWORD_KINDS = frozenset(
         TokenKind.BREAK,
         TokenKind.CONTINUE,
         TokenKind.IN,
+        TokenKind.MATCH,
+        TokenKind.CASE,
+        TokenKind.DEFAULT,
         TokenKind.TRY,
         TokenKind.CATCH,
         TokenKind.THROW,

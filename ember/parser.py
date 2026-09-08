@@ -268,6 +268,8 @@ class Parser:
             return self._for_statement()
         if self._match(TokenKind.RETURN):
             return self._return_statement()
+        if self._match(TokenKind.MATCH):
+            return self._match_statement()
         if self._match(TokenKind.TRY):
             return self._try_statement()
         if self._match(TokenKind.THROW):
@@ -277,6 +279,53 @@ class Parser:
         if self._match(TokenKind.CONTINUE):
             return self._loop_jump(s.ContinueStmt, "continue")
         return self._expression_statement()
+
+    def _match_statement(self) -> s.Stmt:
+        keyword = self._previous()
+        self._consume(TokenKind.LEFT_PAREN, "a match needs its subject in parentheses")
+        subject = self._expression()
+        self._consume(TokenKind.RIGHT_PAREN, "a match subject must be closed with ')'")
+        self._consume(TokenKind.LEFT_BRACE, "a match needs a block of cases")
+        cases: list[s.MatchCase] = []
+        default: s.Stmt | None = None
+        while not self._check(TokenKind.RIGHT_BRACE) and not self._at_end():
+            if self._match(TokenKind.DEFAULT):
+                if default is not None:
+                    raise Syntax(
+                        f"the match on line {keyword.line} has two defaults; one arm "
+                        "already answers for everything unmatched"
+                    )
+                self._consume(TokenKind.COLON, "a default needs ':' before its body")
+                default = self._case_body()
+                continue
+            self._consume(TokenKind.CASE, "a match block holds cases and one default")
+            values = [self._expression()]
+            while self._match(TokenKind.COMMA):
+                values.append(self._expression())
+            self._consume(TokenKind.COLON, "a case needs ':' before its body")
+            cases.append(s.MatchCase(tuple(values), self._case_body()))
+        self._consume(TokenKind.RIGHT_BRACE, "a match block must be closed with '}'")
+        if not cases and default is None:
+            raise Syntax(
+                f"the match on line {keyword.line} has no cases, so it can never do "
+                "anything; give it at least one case or a default"
+            )
+        return s.MatchStmt(keyword, subject, tuple(cases), default)
+
+    def _case_body(self) -> s.Stmt:
+        """Collect the statements of one arm, which ends where the next begins.
+
+        There is no fallthrough in this language, so an arm needs no break and
+        ends at the next case, the default, or the closing brace. Gathering the
+        statements into a block rather than requiring braces keeps a one-line arm
+        short while still giving each arm a scope of its own.
+        """
+        statements: list[s.Stmt] = []
+        while not self._check(TokenKind.CASE) and not self._check(TokenKind.DEFAULT):
+            if self._check(TokenKind.RIGHT_BRACE) or self._at_end():
+                break
+            statements.append(self._declaration())
+        return s.Block(tuple(statements))
 
     def _try_statement(self) -> s.Stmt:
         keyword = self._previous()

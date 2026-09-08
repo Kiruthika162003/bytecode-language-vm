@@ -111,6 +111,22 @@ class ContinueStmt(Stmt):
 
 
 @dataclass(frozen=True)
+class MatchCase:
+    """One arm of a match: the values it answers to, and what it then does."""
+
+    values: tuple[Expr, ...]
+    body: Stmt
+
+
+@dataclass(frozen=True)
+class MatchStmt(Stmt):
+    keyword: Token
+    subject: Expr
+    cases: tuple[MatchCase, ...]
+    default: Stmt | None
+
+
+@dataclass(frozen=True)
 class ThrowStmt(Stmt):
     keyword: Token
     value: Expr
