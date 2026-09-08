@@ -122,6 +122,35 @@ class TestFormat:
         assert "error:" in capsys.readouterr().err
 
 
+class TestLint:
+    def test_lint_reports_what_a_reader_would_question(self, capsys, tmp_path):
+        path = tmp_path / "smelly.ember"
+        path.write_text(
+            "fn f(a, b) { let scratch = 1; return a; }" + chr(10) + "print f(1, 2);",
+            encoding="utf-8",
+        )
+        code = main(["lint", str(path)])
+        captured = capsys.readouterr()
+        # advice, not a failure, so the status stays zero
+        assert code == 0
+        assert "unused-local" in captured.out
+        assert "unused-parameter" in captured.out
+        assert "diagnostics" in captured.out
+
+    def test_clean_code_reports_nothing(self, capsys, tmp_path):
+        path = tmp_path / "clean.ember"
+        path.write_text("fn add(a, b) { return a + b; } print add(1, 2);", encoding="utf-8")
+        code = main(["lint", str(path)])
+        assert code == 0
+        assert "nothing to report" in capsys.readouterr().out
+
+    def test_a_syntax_fault_is_reported(self, capsys, tmp_path):
+        path = tmp_path / "bad.ember"
+        path.write_text("let x = ;", encoding="utf-8")
+        assert main(["lint", str(path)]) == 1
+        assert "error:" in capsys.readouterr().err
+
+
 class TestRepl:
     def test_it_evaluates_lines_and_ends_on_end_of_input(self, capsys, monkeypatch):
         lines = iter(["1 + 2;", "fn dbl(x) { return x * 2; }", "dbl(4);"])
