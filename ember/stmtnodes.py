@@ -94,4 +94,5 @@ class ReturnStmt(Stmt):
 @dataclass(frozen=True)
 class ClassStmt(Stmt):
     name: Token
+    superclass: Token | None
     methods: tuple[FunctionStmt, ...]

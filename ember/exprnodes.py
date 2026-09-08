@@ -117,6 +117,12 @@ class This(Expr):
 
 
 @dataclass(frozen=True)
+class Super(Expr):
+    keyword: Token
+    method: Token
+
+
+@dataclass(frozen=True)
 class ListLiteral(Expr):
     bracket: Token
     elements: tuple[Expr, ...]

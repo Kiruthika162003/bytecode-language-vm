@@ -36,6 +36,7 @@ KEYWORDS: dict[str, TokenKind] = {
     "const": TokenKind.CONST,
     "class": TokenKind.CLASS,
     "this": TokenKind.THIS,
+    "super": TokenKind.SUPER,
     "true": TokenKind.TRUE,
     "false": TokenKind.FALSE,
     "nil": TokenKind.NIL,

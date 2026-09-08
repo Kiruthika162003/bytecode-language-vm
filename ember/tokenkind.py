@@ -74,6 +74,7 @@ class TokenKind(Enum):
     CONST = auto()
     CLASS = auto()
     THIS = auto()
+    SUPER = auto()
     TRUE = auto()
     FALSE = auto()
     NIL = auto()
@@ -112,6 +113,7 @@ _KEYWORD_KINDS = frozenset(
         TokenKind.CONST,
         TokenKind.CLASS,
         TokenKind.THIS,
+        TokenKind.SUPER,
         TokenKind.TRUE,
         TokenKind.FALSE,
         TokenKind.NIL,

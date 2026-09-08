@@ -52,6 +52,7 @@ class Parser:
         self._current = 0
         self._in_initializer = False
         self._in_method = False
+        self._in_subclass = False
 
     def parse(self) -> list[s.Stmt]:
         statements: list[s.Stmt] = []
@@ -103,12 +104,27 @@ class Parser:
 
     def _class_declaration(self) -> s.Stmt:
         name = self._consume(TokenKind.IDENTIFIER, "a class needs a name")
+        superclass: Token | None = None
+        if self._match(TokenKind.LESS):
+            superclass = self._consume(
+                TokenKind.IDENTIFIER, "a superclass must be named after '<'"
+            )
+            if superclass.lexeme == name.lexeme:
+                raise Syntax(
+                    f"the class {name.lexeme!r} on line {name.line} cannot inherit "
+                    "from itself"
+                )
         self._consume(TokenKind.LEFT_BRACE, "a class body must start with '{'")
         methods: list[s.FunctionStmt] = []
-        while not self._check(TokenKind.RIGHT_BRACE) and not self._at_end():
-            methods.append(self._method())
+        was_in_subclass = self._in_subclass
+        self._in_subclass = superclass is not None
+        try:
+            while not self._check(TokenKind.RIGHT_BRACE) and not self._at_end():
+                methods.append(self._method())
+        finally:
+            self._in_subclass = was_in_subclass
         self._consume(TokenKind.RIGHT_BRACE, "a class body must be closed with '}'")
-        return s.ClassStmt(name, tuple(methods))
+        return s.ClassStmt(name, superclass, tuple(methods))
 
     def _method(self) -> s.FunctionStmt:
         # a method is written without the fn keyword, since inside a class body
@@ -363,6 +379,22 @@ class Parser:
             return e.Literal(False, self._previous())
         if self._match(TokenKind.NIL):
             return e.Literal(None, self._previous())
+        if self._match(TokenKind.SUPER):
+            keyword = self._previous()
+            if not self._in_method:
+                raise Syntax(
+                    f"'super' on line {keyword.line} is outside any method"
+                )
+            if not self._in_subclass:
+                raise Syntax(
+                    f"'super' on line {keyword.line} is inside a class with no "
+                    "superclass, so there is nothing above it to reach"
+                )
+            self._consume(TokenKind.DOT, "'super' must be followed by '.'")
+            method = self._consume(
+                TokenKind.IDENTIFIER, "'super.' must name a method"
+            )
+            return e.Super(keyword, method)
         if self._match(TokenKind.THIS):
             keyword = self._previous()
             if not self._in_method:
