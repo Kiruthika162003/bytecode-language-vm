@@ -181,6 +181,8 @@ def statement(node: s.Stmt, depth: int = 0) -> str:
         return f"{pad}continue;"
     if isinstance(node, s.ThrowStmt):
         return f"{pad}throw {expression(node.value)};"
+    if isinstance(node, s.MatchStmt):
+        return _match(node, depth)
     if isinstance(node, s.TryStmt):
         return _try(node, depth)
     raise TypeError(f"the formatter cannot print {type(node).__name__}")
@@ -260,6 +262,26 @@ def _class(node: s.ClassStmt, depth: int) -> str:
         lines.append(_function(method, depth + 1, keyword=""))
     lines.append(pad + "}")
     return chr(10).join(lines)
+
+
+def _match(node: s.MatchStmt, depth: int) -> str:
+    pad = _INDENT * depth
+    inner = _INDENT * (depth + 1)
+    lines = [f"{pad}match ({expression(node.subject)}) {{"]
+    for arm in node.cases:
+        values = ", ".join(expression(value) for value in arm.values)
+        lines.append(f"{inner}case {values}:")
+        lines.extend(_arm_lines(arm.body, depth + 2))
+    if node.default is not None:
+        lines.append(f"{inner}default:")
+        lines.extend(_arm_lines(node.default, depth + 2))
+    lines.append(pad + "}")
+    return chr(10).join(lines)
+
+
+def _arm_lines(body: s.Stmt, depth: int) -> list[str]:
+    statements = body.statements if isinstance(body, s.Block) else (body,)
+    return [statement(inner, depth) for inner in statements]
 
 
 def _try(node: s.TryStmt, depth: int) -> str:

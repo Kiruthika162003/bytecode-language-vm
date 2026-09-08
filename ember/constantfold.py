@@ -245,6 +245,20 @@ def fold_statement(node: s.Stmt) -> s.Stmt:
             fold_expression(node.increment) if node.increment is not None else None,
             fold_statement(node.body),
         )
+    if isinstance(node, s.MatchStmt):
+        arms = tuple(
+            s.MatchCase(
+                tuple(fold_expression(value) for value in arm.values),
+                fold_statement(arm.body),
+            )
+            for arm in node.cases
+        )
+        return s.MatchStmt(
+            node.keyword,
+            fold_expression(node.subject),
+            arms,
+            fold_statement(node.default) if node.default is not None else None,
+        )
     if isinstance(node, s.TryStmt):
         return s.TryStmt(
             node.keyword,

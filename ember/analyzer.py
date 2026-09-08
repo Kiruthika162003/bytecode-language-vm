@@ -192,11 +192,26 @@ class Analyzer:
                 self._expression(node.value)
         elif isinstance(node, s.ThrowStmt):
             self._expression(node.value)
+        elif isinstance(node, s.MatchStmt):
+            self._match(node)
         elif isinstance(node, s.TryStmt):
             self._nested(node.body, "try")
             self._open_scope()
             self._declare(node.catch_name.lexeme, node.catch_name.line)
             self._nested(node.handler, "catch")
+            self._close_scope()
+
+    def _match(self, node: s.MatchStmt) -> None:
+        self._expression(node.subject)
+        for arm in node.cases:
+            for value in arm.values:
+                self._expression(value)
+            self._open_scope()
+            self._statement(arm.body)
+            self._close_scope()
+        if node.default is not None:
+            self._open_scope()
+            self._statement(node.default)
             self._close_scope()
 
     def _condition(self, node: e.Expr, where: str, allow_true: bool = False) -> None:

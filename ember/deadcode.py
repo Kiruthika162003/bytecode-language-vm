@@ -48,6 +48,18 @@ def prune_statement(node: s.Stmt) -> s.Stmt:
         return s.WhileStmt(node.condition, prune_statement(node.body))
     if isinstance(node, s.ForStmt):
         return _prune_for(node)
+    if isinstance(node, s.MatchStmt):
+        # an arm is never removed for looking unreachable, because deciding that
+        # would mean knowing the subject, which is exactly what a match does not
+        arms = tuple(
+            s.MatchCase(arm.values, prune_statement(arm.body)) for arm in node.cases
+        )
+        return s.MatchStmt(
+            node.keyword,
+            node.subject,
+            arms,
+            prune_statement(node.default) if node.default is not None else None,
+        )
     if isinstance(node, s.TryStmt):
         # the body is pruned but the try itself is never removed even when the
         # body cannot throw, because proving that would need to know what every
