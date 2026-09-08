@@ -34,7 +34,13 @@ from ember.closure import Closure, Upvalue
 from ember.errors import Arithmetic, Arity, IndexRange, StackFault, TypeMismatch, Unbound
 from ember.function import Function, NativeFunction
 from ember.opcode import OpCode
-from ember.valueops import is_truthy, stringify, type_name, values_equal
+from ember.valueops import (
+    is_truthy,
+    iteration_source,
+    stringify,
+    type_name,
+    values_equal,
+)
 
 _MAX_FRAMES = 1024
 
@@ -266,6 +272,10 @@ class VM:
                 self._get_property(self._read_constant())
             elif opcode == OpCode.SET_PROPERTY:
                 self._set_property(self._read_constant())
+            elif opcode == OpCode.ITER_PREPARE:
+                self.stack.append(iteration_source(self._pop()))
+            elif opcode == OpCode.ITER_SIZE:
+                self.stack.append(len(self._pop()))
             elif opcode == OpCode.INHERIT:
                 self._inherit()
             elif opcode == OpCode.GET_SUPER:

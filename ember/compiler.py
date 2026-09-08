@@ -52,6 +52,11 @@ from ember.tokenkind import TokenKind
 _MAX_JUMP = 0xFFFF
 _MAX_UPVALUES = 256
 _SUPER = "super"
+# hidden locals for an iteration; the "@" cannot appear in a source identifier,
+# so these can never collide with a name the program itself declares
+_ITER = "@iterable"
+_INDEX = "@index"
+_LIMIT = "@limit"
 
 _BINARY_OPS = {
     TokenKind.PLUS: OpCode.ADD,
@@ -195,6 +200,8 @@ class Compiler:
             self._while(node)
         elif isinstance(node, s.ForStmt):
             self._for(node)
+        elif isinstance(node, s.ForEachStmt):
+            self._for_each(node)
         elif isinstance(node, s.FunctionStmt):
             self._function(node)
         elif isinstance(node, s.ClassStmt):
@@ -300,6 +307,66 @@ class Compiler:
         if exit_jump != -1:
             self._patch_jump(exit_jump)
             self._emit(OpCode.POP, 1)
+        for offset in loop.breaks:
+            self._patch_jump(offset)
+        self._discard_scope(self._scope.end_scope())
+
+    def _for_each(self, node: s.ForEachStmt) -> None:
+        line = node.variable.line
+        self._scope.begin_scope()
+        # the collection is evaluated once into a hidden local, so a call in the
+        # iterable position happens a single time rather than every iteration
+        self._expression(node.iterable)
+        self._emit(OpCode.ITER_PREPARE, line)
+        self._scope.declare(_ITER)
+        self._emit_constant(0, line)
+        self._scope.declare(_INDEX)
+        iter_slot = self._scope.resolve(_ITER)
+        index_slot = self._scope.resolve(_INDEX)
+        self._emit(OpCode.GET_LOCAL, line)
+        self._emit_byte(iter_slot, line)
+        self._emit(OpCode.ITER_SIZE, line)
+        self._scope.declare(_LIMIT)
+        limit_slot = self._scope.resolve(_LIMIT)
+
+        loop_start = len(self._chunk)
+        self._emit(OpCode.GET_LOCAL, line)
+        self._emit_byte(index_slot, line)
+        self._emit(OpCode.GET_LOCAL, line)
+        self._emit_byte(limit_slot, line)
+        self._emit(OpCode.LESS, line)
+        exit_jump = self._emit_jump(OpCode.JUMP_IF_FALSE, line)
+        self._emit(OpCode.POP, line)
+        # the step is emitted before the body and jumped over on first entry, so
+        # a continue can reach it with a single backward jump
+        body_jump = self._emit_jump(OpCode.JUMP, line)
+        step_start = len(self._chunk)
+        self._emit(OpCode.GET_LOCAL, line)
+        self._emit_byte(index_slot, line)
+        self._emit_constant(1, line)
+        self._emit(OpCode.ADD, line)
+        self._emit(OpCode.SET_LOCAL, line)
+        self._emit_byte(index_slot, line)
+        self._emit(OpCode.POP, line)
+        self._emit_loop(loop_start, line)
+        self._patch_jump(body_jump)
+
+        loop = _Loop(continue_target=step_start, depth=self._scope.depth)
+        self._unit.loops.append(loop)
+        self._scope.begin_scope()
+        self._emit(OpCode.GET_LOCAL, line)
+        self._emit_byte(iter_slot, line)
+        self._emit(OpCode.GET_LOCAL, line)
+        self._emit_byte(index_slot, line)
+        self._emit(OpCode.INDEX_GET, line)
+        self._scope.declare(node.variable.lexeme)
+        self._statement(node.body)
+        self._discard_scope(self._scope.end_scope())
+        self._unit.loops.pop()
+        self._emit_loop(step_start, line)
+
+        self._patch_jump(exit_jump)
+        self._emit(OpCode.POP, line)
         for offset in loop.breaks:
             self._patch_jump(offset)
         self._discard_scope(self._scope.end_scope())
