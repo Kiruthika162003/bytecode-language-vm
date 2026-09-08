@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ember.closure import Closure
 from ember.function import Function, NativeFunction
 
 
@@ -73,7 +74,7 @@ def type_name(value: Any) -> str:
         return "list"
     if isinstance(value, dict):
         return "map"
-    if isinstance(value, (Function, NativeFunction)):
+    if isinstance(value, (Function, NativeFunction, Closure)):
         return "function"
     return "value"
 

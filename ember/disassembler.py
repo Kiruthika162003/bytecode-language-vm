@@ -37,6 +37,25 @@ _CONSTANT_OPS = {
 _JUMP_FORWARD = {OpCode.JUMP, OpCode.JUMP_IF_FALSE, OpCode.JUMP_IF_TRUE}
 
 
+def _closure_instruction(chunk: Chunk, offset: int, head: str) -> tuple[str, int]:
+    # CLOSURE is the one variable-width instruction: its constant names the
+    # function, and two bytes follow per captured upvalue, so the count must
+    # come from that function rather than from a fixed table
+    constant = chunk.code[offset + 1]
+    function = chunk.constants[constant]
+    cursor = offset + 2
+    captures: list[str] = []
+    for _ in range(getattr(function, "upvalue_count", 0)):
+        is_local = chunk.code[cursor]
+        index = chunk.code[cursor + 1]
+        captures.append(f"{'local' if is_local else 'upvalue'} {index}")
+        cursor += 2
+    text = f"{head} {constant} ({function!r})"
+    if captures:
+        text = f"{text} captures [{', '.join(captures)}]"
+    return text, cursor
+
+
 def disassemble_instruction(chunk: Chunk, offset: int) -> tuple[str, int]:
     byte = chunk.code[offset]
     try:
@@ -48,6 +67,8 @@ def disassemble_instruction(chunk: Chunk, offset: int) -> tuple[str, int]:
     line_text = "   |" if same_line else f"{line:4d}"
     width = operand_bytes(opcode)
     head = f"{offset:04d} {line_text} {opcode.name}"
+    if opcode == OpCode.CLOSURE:
+        return _closure_instruction(chunk, offset, head)
     if width == 0:
         return head, offset + 1
     if width == 1:

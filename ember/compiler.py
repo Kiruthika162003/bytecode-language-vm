@@ -32,12 +32,13 @@ from ember import stmtnodes as s
 from ember.chunk import Chunk
 from ember.errors import Compile, Immutable
 from ember.function import Function
-from ember.localscope import LocalScope
+from ember.localscope import Local, LocalScope
 from ember.opcode import OpCode
 from ember.token import Token
 from ember.tokenkind import TokenKind
 
 _MAX_JUMP = 0xFFFF
+_MAX_UPVALUES = 256
 
 _BINARY_OPS = {
     TokenKind.PLUS: OpCode.ADD,
@@ -54,10 +55,22 @@ _BINARY_OPS = {
 }
 
 
+class _Upvalue:
+    """Where a closure's captured variable comes from in the enclosing unit."""
+
+    __slots__ = ("index", "is_local")
+
+    def __init__(self, index: int, is_local: bool) -> None:
+        self.index = index
+        self.is_local = is_local
+
+
 class _FunctionUnit:
-    def __init__(self, name: str, arity: int) -> None:
+    def __init__(self, name: str, arity: int, enclosing: _FunctionUnit | None = None) -> None:
         self.function = Function(name, arity, Chunk())
         self.scope = LocalScope()
+        self.enclosing = enclosing
+        self.upvalues: list[_Upvalue] = []
 
 
 class Compiler:
@@ -175,9 +188,16 @@ class Compiler:
         self._scope.begin_scope()
         for statement in node.statements:
             self._statement(statement)
-        removed = self._scope.end_scope()
-        for _ in range(removed):
-            self._emit(OpCode.POP, 1)
+        self._discard_scope(self._scope.end_scope())
+
+    def _discard_scope(self, removed: list[Local]) -> None:
+        # a captured local must be closed rather than merely popped, so the
+        # closure holding it keeps the value once the slot is gone
+        for local in removed:
+            if local.is_captured:
+                self._emit(OpCode.CLOSE_UPVALUE, 1)
+            else:
+                self._emit(OpCode.POP, 1)
 
     def _if(self, node: s.IfStmt) -> None:
         line = self._line_of(node.condition)
@@ -228,12 +248,11 @@ class Compiler:
         if exit_jump != -1:
             self._patch_jump(exit_jump)
             self._emit(OpCode.POP, 1)
-        removed = self._scope.end_scope()
-        for _ in range(removed):
-            self._emit(OpCode.POP, 1)
+        self._discard_scope(self._scope.end_scope())
 
     def _function(self, node: s.FunctionStmt) -> None:
-        unit = _FunctionUnit(node.name.lexeme, len(node.parameters))
+        line = node.name.line
+        unit = _FunctionUnit(node.name.lexeme, len(node.parameters), enclosing=self._unit)
         unit.scope.begin_scope()
         unit.scope.declare_reserved()
         for parameter in node.parameters:
@@ -241,11 +260,44 @@ class Compiler:
         self._units.append(unit)
         for statement in node.body:
             self._statement(statement)
-        self._emit(OpCode.NIL, node.name.line)
-        self._emit(OpCode.RETURN, node.name.line)
+        self._emit(OpCode.NIL, line)
+        self._emit(OpCode.RETURN, line)
         self._units.pop()
-        self._emit_constant(unit.function, node.name.line)
+        unit.function.upvalue_count = len(unit.upvalues)
+        index = self._chunk.add_constant(unit.function)
+        self._emit(OpCode.CLOSURE, line)
+        self._emit_byte(index, line)
+        # each captured variable is described inline: whether it comes from the
+        # enclosing frame's locals or from that frame's own upvalues, and where
+        for upvalue in unit.upvalues:
+            self._emit_byte(1 if upvalue.is_local else 0, line)
+            self._emit_byte(upvalue.index, line)
         self._define_name(node.name, is_const=False)
+
+    def _add_upvalue(self, unit: _FunctionUnit, index: int, is_local: bool) -> int:
+        for existing, upvalue in enumerate(unit.upvalues):
+            if upvalue.index == index and upvalue.is_local == is_local:
+                return existing
+        if len(unit.upvalues) >= _MAX_UPVALUES:
+            raise Compile(
+                f"a function cannot capture more than {_MAX_UPVALUES} variables "
+                "from enclosing scopes"
+            )
+        unit.upvalues.append(_Upvalue(index, is_local))
+        return len(unit.upvalues) - 1
+
+    def _resolve_upvalue(self, unit: _FunctionUnit, name: str) -> int | None:
+        enclosing = unit.enclosing
+        if enclosing is None:
+            return None
+        local = enclosing.scope.resolve(name)
+        if local is not None:
+            enclosing.scope.mark_captured(local)
+            return self._add_upvalue(unit, local, is_local=True)
+        inherited = self._resolve_upvalue(enclosing, name)
+        if inherited is not None:
+            return self._add_upvalue(unit, inherited, is_local=False)
+        return None
 
     def _return(self, node: s.ReturnStmt) -> None:
         line = node.keyword.line
@@ -312,6 +364,11 @@ class Compiler:
             self._emit(OpCode.GET_LOCAL, line)
             self._emit_byte(slot, line)
             return
+        upvalue = self._resolve_upvalue(self._unit, node.name.lexeme)
+        if upvalue is not None:
+            self._emit(OpCode.GET_UPVALUE, line)
+            self._emit_byte(upvalue, line)
+            return
         index = self._chunk.add_constant(node.name.lexeme)
         self._emit(OpCode.GET_GLOBAL, line)
         self._emit_byte(index, line)
@@ -328,6 +385,11 @@ class Compiler:
                 )
             self._emit(OpCode.SET_LOCAL, line)
             self._emit_byte(slot, line)
+            return
+        upvalue = self._resolve_upvalue(self._unit, node.name.lexeme)
+        if upvalue is not None:
+            self._emit(OpCode.SET_UPVALUE, line)
+            self._emit_byte(upvalue, line)
             return
         if node.name.lexeme in self._const_globals:
             raise Immutable(
