@@ -230,11 +230,33 @@ class Parser:
             return self._for_statement()
         if self._match(TokenKind.RETURN):
             return self._return_statement()
+        if self._match(TokenKind.TRY):
+            return self._try_statement()
+        if self._match(TokenKind.THROW):
+            return self._throw_statement()
         if self._match(TokenKind.BREAK):
             return self._loop_jump(s.BreakStmt, "break")
         if self._match(TokenKind.CONTINUE):
             return self._loop_jump(s.ContinueStmt, "continue")
         return self._expression_statement()
+
+    def _try_statement(self) -> s.Stmt:
+        keyword = self._previous()
+        self._consume(TokenKind.LEFT_BRACE, "a try needs a block")
+        body = s.Block(tuple(self._block()))
+        self._consume(TokenKind.CATCH, "a try must be followed by catch")
+        self._consume(TokenKind.LEFT_PAREN, "a catch names its value in parentheses")
+        name = self._consume(TokenKind.IDENTIFIER, "a catch needs a name for the value")
+        self._consume(TokenKind.RIGHT_PAREN, "a catch name must be closed with ')'")
+        self._consume(TokenKind.LEFT_BRACE, "a catch needs a block")
+        handler = s.Block(tuple(self._block()))
+        return s.TryStmt(keyword, body, name, handler)
+
+    def _throw_statement(self) -> s.Stmt:
+        keyword = self._previous()
+        value = self._expression()
+        self._consume(TokenKind.SEMICOLON, "a throw must end with ';'")
+        return s.ThrowStmt(keyword, value)
 
     def _loop_jump(self, node_type, word: str) -> s.Stmt:
         keyword = self._previous()

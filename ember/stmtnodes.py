@@ -109,6 +109,20 @@ class ContinueStmt(Stmt):
 
 
 @dataclass(frozen=True)
+class ThrowStmt(Stmt):
+    keyword: Token
+    value: Expr
+
+
+@dataclass(frozen=True)
+class TryStmt(Stmt):
+    keyword: Token
+    body: Stmt
+    catch_name: Token
+    handler: Stmt
+
+
+@dataclass(frozen=True)
 class ClassStmt(Stmt):
     name: Token
     superclass: Token | None

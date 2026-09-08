@@ -83,6 +83,9 @@ class OpCode(IntEnum):
     GET_SUPER = 44
     ITER_PREPARE = 45
     ITER_SIZE = 46
+    PUSH_HANDLER = 47
+    POP_HANDLER = 48
+    THROW = 49
 
 
 # How many operand bytes follow each opcode. A jump carries a two-byte
@@ -138,6 +141,9 @@ OPERAND_BYTES: dict[OpCode, int] = {
     OpCode.GET_SUPER: 1,
     OpCode.ITER_PREPARE: 0,
     OpCode.ITER_SIZE: 0,
+    OpCode.PUSH_HANDLER: 2,
+    OpCode.POP_HANDLER: 0,
+    OpCode.THROW: 0,
 }
 
 

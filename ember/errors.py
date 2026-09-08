@@ -118,6 +118,20 @@ class StackFault(EmberError):
     """
 
 
+class Thrown(EmberError):
+    """A value the program threw that no handler caught.
+
+    This is the one error kind whose interesting content is not a message
+    but a value, since a program may throw anything. It carries that value
+    so an embedder can inspect what was thrown rather than parsing text,
+    and its message is the value rendered the way the language prints it.
+    """
+
+    def __init__(self, value: object, rendered: str) -> None:
+        super().__init__(f"uncaught thrown value: {rendered}")
+        self.value = value
+
+
 class Immutable(EmberError):
     """An attempt was made to change a binding that cannot change.
 

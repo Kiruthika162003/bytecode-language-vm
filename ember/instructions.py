@@ -30,7 +30,15 @@ from ember.chunk import Chunk
 from ember.errors import Compile
 from ember.opcode import OpCode, operand_bytes
 
-FORWARD_JUMPS = (OpCode.JUMP, OpCode.JUMP_IF_FALSE, OpCode.JUMP_IF_TRUE)
+# PUSH_HANDLER stores a forward distance to its catch clause exactly as a jump
+# does, so it must be decoded as a target too or an edit would silently move the
+# handler out from under it
+FORWARD_JUMPS = (
+    OpCode.JUMP,
+    OpCode.JUMP_IF_FALSE,
+    OpCode.JUMP_IF_TRUE,
+    OpCode.PUSH_HANDLER,
+)
 BACKWARD_JUMPS = (OpCode.LOOP,)
 JUMPS = FORWARD_JUMPS + BACKWARD_JUMPS
 
