@@ -36,6 +36,7 @@ class Local:
     name: str
     depth: int
     is_const: bool
+    is_captured: bool = False
 
 
 class LocalScope:
@@ -54,11 +55,10 @@ class LocalScope:
     def begin_scope(self) -> None:
         self._depth += 1
 
-    def end_scope(self) -> int:
-        removed = 0
+    def end_scope(self) -> list[Local]:
+        removed: list[Local] = []
         while self._locals and self._locals[-1].depth == self._depth:
-            self._locals.pop()
-            removed += 1
+            removed.append(self._locals.pop())
         self._depth -= 1
         return removed
 
@@ -95,3 +95,9 @@ class LocalScope:
 
     def is_const(self, slot: int) -> bool:
         return self._locals[slot].is_const
+
+    def mark_captured(self, slot: int) -> None:
+        self._locals[slot].is_captured = True
+
+    def is_captured(self, slot: int) -> bool:
+        return self._locals[slot].is_captured

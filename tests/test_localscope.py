@@ -43,7 +43,7 @@ class TestShadowing:
         scope.begin_scope()
         scope.declare("x")
         removed = scope.end_scope()
-        assert removed == 1
+        assert [local.name for local in removed] == ["x"]
         assert scope.resolve("x") == outer
 
 
@@ -53,6 +53,28 @@ class TestConst:
         scope.begin_scope()
         slot = scope.declare("k", is_const=True)
         assert scope.is_const(slot)
+
+
+class TestCapture:
+    def test_a_local_starts_uncaptured_and_can_be_marked(self):
+        scope = LocalScope()
+        scope.begin_scope()
+        slot = scope.declare("x")
+        assert not scope.is_captured(slot)
+        scope.mark_captured(slot)
+        assert scope.is_captured(slot)
+
+    def test_end_scope_reports_which_removed_locals_were_captured(self):
+        scope = LocalScope()
+        scope.begin_scope()
+        scope.begin_scope()
+        plain = scope.declare("a")
+        taken = scope.declare("b")
+        scope.mark_captured(taken)
+        removed = scope.end_scope()
+        by_name = {local.name: local.is_captured for local in removed}
+        assert by_name == {"a": False, "b": True}
+        assert plain != taken
 
 
 class TestRefusals:
