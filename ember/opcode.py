@@ -39,6 +39,7 @@ class OpCode(IntEnum):
     SET_GLOBAL = 7
     GET_LOCAL = 8
     SET_LOCAL = 9
+    DEFINE_GLOBAL_CONST = 34
 
     ADD = 10
     SUBTRACT = 11
@@ -79,6 +80,7 @@ OPERAND_BYTES: dict[OpCode, int] = {
     OpCode.FALSE: 0,
     OpCode.POP: 0,
     OpCode.DEFINE_GLOBAL: 1,
+    OpCode.DEFINE_GLOBAL_CONST: 1,
     OpCode.GET_GLOBAL: 1,
     OpCode.SET_GLOBAL: 1,
     OpCode.GET_LOCAL: 1,

@@ -27,7 +27,13 @@ from __future__ import annotations
 from ember.chunk import Chunk
 from ember.opcode import OpCode, operand_bytes
 
-_CONSTANT_OPS = {OpCode.CONSTANT, OpCode.DEFINE_GLOBAL, OpCode.GET_GLOBAL, OpCode.SET_GLOBAL}
+_CONSTANT_OPS = {
+    OpCode.CONSTANT,
+    OpCode.DEFINE_GLOBAL,
+    OpCode.DEFINE_GLOBAL_CONST,
+    OpCode.GET_GLOBAL,
+    OpCode.SET_GLOBAL,
+}
 _JUMP_FORWARD = {OpCode.JUMP, OpCode.JUMP_IF_FALSE, OpCode.JUMP_IF_TRUE}
 
 
