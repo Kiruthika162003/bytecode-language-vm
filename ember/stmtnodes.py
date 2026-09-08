@@ -92,6 +92,16 @@ class ReturnStmt(Stmt):
 
 
 @dataclass(frozen=True)
+class BreakStmt(Stmt):
+    keyword: Token
+
+
+@dataclass(frozen=True)
+class ContinueStmt(Stmt):
+    keyword: Token
+
+
+@dataclass(frozen=True)
 class ClassStmt(Stmt):
     name: Token
     superclass: Token | None

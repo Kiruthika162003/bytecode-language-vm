@@ -13,16 +13,22 @@ least as tightly as the current level, recursing one level higher for
 the right operand so that left-associative operators group to the left.
 Postfix forms, a call, an index, a field access, are handled in their own
 tight loop after a primary is parsed, since they bind tighter than any
-binary operator and chain naturally. Two design decisions are worth
-stating honestly. First, assignment is parsed as a special low-precedence
-right-associative form whose left side must be a valid target, and this
-version accepts only a bare variable as a target, leaving index and
-field assignment to a later stage rather than pretending to support what
-the compiler cannot yet emit. Second, on the first error the parser
-raises rather than attempting recovery; a parser built for an editor
-would synchronize to the next statement boundary and collect many
-errors, and that machinery is deliberately omitted here in favor of a
-parser whose control flow is easy to follow.
+binary operator and chain naturally. Assignment is parsed as a special
+low-precedence right-associative form whose left side must be a valid
+target; an earlier version accepted only a bare variable there and that
+restriction is worth recording, because lifting it turned out to be a
+matter of recognising which node the target parsed into, a variable, an
+index, or a property, and rewriting it into the matching assignment node
+rather than of changing how assignment is parsed at all. The parser also
+carries the language's context rules that have nothing to do with
+grammar: whether it sits inside a method, an initializer, a subclass, or a
+loop, which is what lets this, super, break, and continue be refused where
+they would be meaningless. Putting those checks here rather than in either
+backend is deliberate, since both then reject the same programs at the
+same stage. On the first error the parser raises rather than attempting
+recovery; a parser built for an editor would synchronize to the next
+statement boundary and collect many errors, and that machinery is
+deliberately omitted in favour of control flow that is easy to follow.
 """
 
 from __future__ import annotations
@@ -53,6 +59,7 @@ class Parser:
         self._in_initializer = False
         self._in_method = False
         self._in_subclass = False
+        self._loop_depth = 0
 
     def parse(self) -> list[s.Stmt]:
         statements: list[s.Stmt] = []
@@ -192,7 +199,12 @@ class Parser:
                     break
         self._consume(TokenKind.RIGHT_PAREN, "a parameter list must end with ')'")
         self._consume(TokenKind.LEFT_BRACE, "a function body must start with '{'")
-        body = self._block()
+        outer_loops = self._loop_depth
+        self._loop_depth = 0
+        try:
+            body = self._block()
+        finally:
+            self._loop_depth = outer_loops
         return s.FunctionStmt(name, tuple(parameters), tuple(body))
 
     def _statement(self) -> s.Stmt:
@@ -208,7 +220,30 @@ class Parser:
             return self._for_statement()
         if self._match(TokenKind.RETURN):
             return self._return_statement()
+        if self._match(TokenKind.BREAK):
+            return self._loop_jump(s.BreakStmt, "break")
+        if self._match(TokenKind.CONTINUE):
+            return self._loop_jump(s.ContinueStmt, "continue")
         return self._expression_statement()
+
+    def _loop_jump(self, node_type, word: str) -> s.Stmt:
+        keyword = self._previous()
+        if self._loop_depth == 0:
+            raise Syntax(
+                f"'{word}' on line {keyword.line} is outside any loop, so there "
+                "is no loop for it to act on"
+            )
+        self._consume(TokenKind.SEMICOLON, f"a {word} must end with ';'")
+        return node_type(keyword)
+
+    def _loop_body(self) -> s.Stmt:
+        # a function declared inside a loop is a new frame, so break there would
+        # be meaningless; the depth is saved and cleared around a function body
+        self._loop_depth += 1
+        try:
+            return self._statement()
+        finally:
+            self._loop_depth -= 1
 
     def _print_statement(self) -> s.Stmt:
         keyword = self._previous()
@@ -235,7 +270,7 @@ class Parser:
         self._consume(TokenKind.LEFT_PAREN, "a while condition must start with '('")
         condition = self._expression()
         self._consume(TokenKind.RIGHT_PAREN, "a while condition must end with ')'")
-        body = self._statement()
+        body = self._loop_body()
         return s.WhileStmt(condition, body)
 
     def _for_statement(self) -> s.Stmt:
@@ -250,7 +285,7 @@ class Parser:
         self._consume(TokenKind.SEMICOLON, "a for condition must be followed by ';'")
         increment = None if self._check(TokenKind.RIGHT_PAREN) else self._expression()
         self._consume(TokenKind.RIGHT_PAREN, "a for clause must end with ')'")
-        body = self._statement()
+        body = self._loop_body()
         return s.ForStmt(initializer, condition, increment, body)
 
     def _return_statement(self) -> s.Stmt:

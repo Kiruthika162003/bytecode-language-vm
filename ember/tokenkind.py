@@ -68,6 +68,8 @@ class TokenKind(Enum):
     ELSE = auto()
     WHILE = auto()
     FOR = auto()
+    BREAK = auto()
+    CONTINUE = auto()
     FN = auto()
     RETURN = auto()
     LET = auto()
@@ -107,6 +109,8 @@ _KEYWORD_KINDS = frozenset(
         TokenKind.ELSE,
         TokenKind.WHILE,
         TokenKind.FOR,
+        TokenKind.BREAK,
+        TokenKind.CONTINUE,
         TokenKind.FN,
         TokenKind.RETURN,
         TokenKind.LET,

@@ -30,6 +30,8 @@ KEYWORDS: dict[str, TokenKind] = {
     "else": TokenKind.ELSE,
     "while": TokenKind.WHILE,
     "for": TokenKind.FOR,
+    "break": TokenKind.BREAK,
+    "continue": TokenKind.CONTINUE,
     "fn": TokenKind.FN,
     "return": TokenKind.RETURN,
     "let": TokenKind.LET,
