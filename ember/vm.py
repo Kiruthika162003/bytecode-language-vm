@@ -223,6 +223,10 @@ class VM:
                 self._get_property(self._read_constant())
             elif opcode == OpCode.SET_PROPERTY:
                 self._set_property(self._read_constant())
+            elif opcode == OpCode.INHERIT:
+                self._inherit()
+            elif opcode == OpCode.GET_SUPER:
+                self._get_super(self._read_constant())
             elif opcode == OpCode.CLOSURE:
                 self._make_closure()
             elif opcode == OpCode.GET_UPVALUE:
@@ -329,6 +333,29 @@ class VM:
             )
         base = len(self.stack) - argument_count - 1
         self.frames.append(CallFrame(closure, base))
+
+    def _inherit(self) -> None:
+        subclass = self._pop()
+        superclass = self._peek()
+        if not isinstance(superclass, EmberClass):
+            raise TypeMismatch(
+                f"a class can only inherit from a class, and this is a "
+                f"{type_name(superclass)}"
+            )
+        # the superclass's methods are copied in before the subclass declares
+        # its own, so an override written below simply replaces the entry
+        subclass.methods.update(superclass.methods)
+
+    def _get_super(self, name: str) -> None:
+        superclass = self._pop()
+        receiver = self._pop()
+        method = superclass.find_method(name)
+        if method is None:
+            raise Unbound(
+                f"the superclass {superclass.name} has no method {name!r} for "
+                "'super' to reach"
+            )
+        self.stack.append(BoundMethod(receiver, method))
 
     def _define_method(self, name: str) -> None:
         method = self._pop()

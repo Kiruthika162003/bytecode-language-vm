@@ -15,14 +15,21 @@ flow. The machine only has jumps, so the compiler turns structured
 constructs into jumps whose distances it does not know until it has
 compiled what they skip, so it emits each jump with a placeholder
 distance and patches the real distance once the target is known. The
-honest limitation of this version is scope of capture: each function is
-compiled with its own independent set of locals, so a nested function can
-read globals and its own parameters and locals but cannot close over a
-variable of an enclosing function; true closures need captured upvalues,
-which this compiler does not emit, and a nested reference to an enclosing
-local is therefore treated as a global and will fault at run time if no
-such global exists. That boundary is drawn deliberately to keep this pass
-and the machine simple, and it is the natural place a later stage extends.
+third responsibility, added after the first two were working, is capture:
+a name that is neither a local here nor a global is looked for among the
+enclosing function's locals and then among that function's own upvalues,
+so a nested function closes over the variables it mentions and a
+declaration emits CLOSURE carrying one descriptor per captured variable.
+An earlier version of this compiler treated such a name as a global and
+left a nested reference to fault at run time, and the note recording that
+limitation is kept here rather than deleted, because the shape of the fix,
+resolving through enclosing units and marking the captured local so its
+scope closes it instead of popping it, is the interesting part. What
+remains genuinely absent is any optimisation of the emitted code: this
+pass writes the straightforward instruction sequence for each construct
+and never folds a constant, removes a dead branch, or fuses a property
+fetch with the call that follows it, all of which a later pass could do
+over the bytecode it produces.
 """
 
 from __future__ import annotations
@@ -40,6 +47,7 @@ from ember.tokenkind import TokenKind
 
 _MAX_JUMP = 0xFFFF
 _MAX_UPVALUES = 256
+_SUPER = "super"
 
 _BINARY_OPS = {
     TokenKind.PLUS: OpCode.ADD,
@@ -284,8 +292,15 @@ class Compiler:
         self._emit(OpCode.CLASS, line)
         self._emit_byte(name_index, line)
         self._define_name(node.name, is_const=False)
-        # the class has to be back on the stack for each METHOD to attach to,
-        # so it is loaded again by the name just bound and popped at the end
+        if node.superclass is not None:
+            # the superclass is held in a hidden local for the class body, which
+            # methods capture as an upvalue; that is how super reaches it after
+            # the declaration has finished and the stack window is gone
+            self._scope.begin_scope()
+            self._load_name(node.superclass)
+            self._scope.declare(_SUPER)
+            self._load_name(node.name)
+            self._emit(OpCode.INHERIT, line)
         self._load_name(node.name)
         seen: set[str] = set()
         for method in node.methods:
@@ -297,6 +312,8 @@ class Compiler:
             seen.add(method.name.lexeme)
             self._method(method)
         self._emit(OpCode.POP, line)
+        if node.superclass is not None:
+            self._discard_scope(self._scope.end_scope())
 
     def _method(self, node: s.FunctionStmt) -> None:
         line = node.name.line
@@ -420,6 +437,8 @@ class Compiler:
             self._set_property(node)
         elif isinstance(node, e.This):
             self._this(node)
+        elif isinstance(node, e.Super):
+            self._super(node)
         elif isinstance(node, e.ListLiteral):
             self._list(node)
         elif isinstance(node, e.MapLiteral):
@@ -551,6 +570,27 @@ class Compiler:
             "instance for it to name"
         )
 
+    def _super(self, node: e.Super) -> None:
+        line = node.keyword.line
+        self._emit_named_load("this", line, "'this'")
+        self._emit_named_load(_SUPER, line, "'super'")
+        index = self._chunk.add_constant(node.method.lexeme)
+        self._emit(OpCode.GET_SUPER, line)
+        self._emit_byte(index, line)
+
+    def _emit_named_load(self, name: str, line: int, label: str) -> None:
+        slot = self._scope.resolve(name)
+        if slot is not None:
+            self._emit(OpCode.GET_LOCAL, line)
+            self._emit_byte(slot, line)
+            return
+        upvalue = self._resolve_upvalue(self._unit, name)
+        if upvalue is not None:
+            self._emit(OpCode.GET_UPVALUE, line)
+            self._emit_byte(upvalue, line)
+            return
+        raise Resolve(f"{label} on line {line} has nothing to refer to here")
+
     def _set_index(self, node: e.SetIndex) -> None:
         self._expression(node.collection)
         self._expression(node.key)
@@ -589,7 +629,7 @@ class Compiler:
             return node.bracket.line
         if isinstance(node, (e.Get, e.Set)):
             return node.name.line
-        if isinstance(node, e.This):
+        if isinstance(node, (e.This, e.Super)):
             return node.keyword.line
         if isinstance(node, e.ListLiteral):
             return node.bracket.line
