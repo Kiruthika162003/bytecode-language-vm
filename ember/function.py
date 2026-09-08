@@ -36,6 +36,7 @@ class Function:
     name: str
     arity: int
     chunk: Chunk
+    upvalue_count: int = 0
 
     def __repr__(self) -> str:
         label = self.name if self.name else "<script>"

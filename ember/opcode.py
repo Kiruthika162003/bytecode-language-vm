@@ -70,9 +70,17 @@ class OpCode(IntEnum):
     INDEX_GET = 32
     INDEX_SET = 33
 
+    CLOSURE = 35
+    GET_UPVALUE = 36
+    SET_UPVALUE = 37
+    CLOSE_UPVALUE = 38
+
 
 # How many operand bytes follow each opcode. A jump carries a two-byte
-# offset; the loads and calls carry one; the rest are bare.
+# offset; the loads and calls carry one; the rest are bare. CLOSURE is the
+# one variable-width instruction: the count below covers its constant
+# operand, and two more bytes follow for each upvalue the closure captures,
+# so a reader must consult the named function to step over it.
 OPERAND_BYTES: dict[OpCode, int] = {
     OpCode.CONSTANT: 1,
     OpCode.NIL: 0,
@@ -109,6 +117,10 @@ OPERAND_BYTES: dict[OpCode, int] = {
     OpCode.BUILD_MAP: 1,
     OpCode.INDEX_GET: 0,
     OpCode.INDEX_SET: 0,
+    OpCode.CLOSURE: 1,
+    OpCode.GET_UPVALUE: 1,
+    OpCode.SET_UPVALUE: 1,
+    OpCode.CLOSE_UPVALUE: 0,
 }
 
 
