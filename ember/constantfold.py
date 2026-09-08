@@ -67,6 +67,8 @@ def fold_expression(node: e.Expr) -> e.Expr:
         return _fold_binary(node)
     if isinstance(node, e.Logical):
         return _fold_logical(node)
+    if isinstance(node, e.Conditional):
+        return _fold_conditional(node)
     if isinstance(node, e.Assign):
         return e.Assign(node.name, fold_expression(node.value))
     if isinstance(node, e.Call):
@@ -157,6 +159,16 @@ def _fold_logical(node: e.Logical) -> e.Expr:
             return left if not truthy else right
         return left if truthy else right
     return e.Logical(left, node.operator, right)
+
+
+def _fold_conditional(node: e.Conditional) -> e.Expr:
+    condition = fold_expression(node.condition)
+    when_true = fold_expression(node.when_true)
+    when_false = fold_expression(node.when_false)
+    if isinstance(condition, e.Literal):
+        # a known condition selects an arm outright, and the other disappears
+        return when_true if is_truthy(condition.value) else when_false
+    return e.Conditional(condition, node.question, when_true, when_false)
 
 
 def fold_statement(node: s.Stmt) -> s.Stmt:

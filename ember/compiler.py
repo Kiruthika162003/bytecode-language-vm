@@ -70,6 +70,11 @@ _BINARY_OPS = {
     TokenKind.STAR: OpCode.MULTIPLY,
     TokenKind.SLASH: OpCode.DIVIDE,
     TokenKind.PERCENT: OpCode.MODULO,
+    TokenKind.AMPERSAND: OpCode.BIT_AND,
+    TokenKind.PIPE: OpCode.BIT_OR,
+    TokenKind.CARET: OpCode.BIT_XOR,
+    TokenKind.LESS_LESS: OpCode.SHIFT_LEFT,
+    TokenKind.GREATER_GREATER: OpCode.SHIFT_RIGHT,
     TokenKind.EQUAL_EQUAL: OpCode.EQUAL,
     TokenKind.BANG_EQUAL: OpCode.NOT_EQUAL,
     TokenKind.LESS: OpCode.LESS,
@@ -620,6 +625,8 @@ class Compiler:
             self._index(node)
         elif isinstance(node, e.SetIndex):
             self._set_index(node)
+        elif isinstance(node, e.Conditional):
+            self._conditional(node)
         elif isinstance(node, e.Get):
             self._get_property(node)
         elif isinstance(node, e.Set):
@@ -694,6 +701,8 @@ class Compiler:
         line = node.operator.line
         if node.operator.kind == TokenKind.MINUS:
             self._emit(OpCode.NEGATE, line)
+        elif node.operator.kind == TokenKind.TILDE:
+            self._emit(OpCode.BIT_NOT, line)
         else:
             self._emit(OpCode.NOT, line)
 
@@ -728,6 +737,20 @@ class Compiler:
         self._expression(node.collection)
         self._expression(node.key)
         self._emit(OpCode.INDEX_GET, node.bracket.line)
+
+    def _conditional(self, node: e.Conditional) -> None:
+        # the same shape as an if statement, except each arm leaves a value, so
+        # the whole expression yields whichever arm ran
+        line = node.question.line
+        self._expression(node.condition)
+        else_jump = self._emit_jump(OpCode.JUMP_IF_FALSE, line)
+        self._emit(OpCode.POP, line)
+        self._expression(node.when_true)
+        end_jump = self._emit_jump(OpCode.JUMP, line)
+        self._patch_jump(else_jump)
+        self._emit(OpCode.POP, line)
+        self._expression(node.when_false)
+        self._patch_jump(end_jump)
 
     def _get_property(self, node: e.Get) -> None:
         self._expression(node.target)
@@ -820,6 +843,8 @@ class Compiler:
             return node.name.line
         if isinstance(node, (e.This, e.Super)):
             return node.keyword.line
+        if isinstance(node, e.Conditional):
+            return node.question.line
         if isinstance(node, e.ListLiteral):
             return node.bracket.line
         if isinstance(node, e.MapLiteral):

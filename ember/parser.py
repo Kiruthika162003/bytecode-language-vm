@@ -349,13 +349,25 @@ class Parser:
         return s.ExpressionStmt(value)
 
     def _expression(self) -> e.Expr:
-        target = self._binary(Precedence.OR)
+        target = self._conditional()
         if self._match(TokenKind.EQUAL):
             return self._finish_assignment(target, self._previous())
         if self._peek().kind in _COMPOUND_OPS:
             operator = self._advance()
             return self._finish_compound(target, operator)
         return target
+
+    def _conditional(self) -> e.Expr:
+        condition = self._binary(Precedence.OR)
+        if not self._match(TokenKind.QUESTION):
+            return condition
+        question = self._previous()
+        when_true = self._expression()
+        self._consume(TokenKind.COLON, "a conditional needs ':' between its arms")
+        # the false arm recurses into the conditional level, so a chain of them
+        # groups to the right, which is what makes an else-if chain read correctly
+        when_false = self._conditional()
+        return e.Conditional(condition, question, when_true, when_false)
 
     def _finish_assignment(self, target: e.Expr, equals: Token) -> e.Expr:
         value = self._expression()
@@ -408,7 +420,7 @@ class Parser:
         return left
 
     def _unary(self) -> e.Expr:
-        if self._match(TokenKind.BANG, TokenKind.MINUS, TokenKind.NOT):
+        if self._match(TokenKind.BANG, TokenKind.MINUS, TokenKind.NOT, TokenKind.TILDE):
             operator = self._previous()
             operand = self._unary()
             return e.Unary(operator, operand)

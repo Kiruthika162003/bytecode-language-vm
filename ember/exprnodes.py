@@ -66,6 +66,14 @@ class Logical(Expr):
 
 
 @dataclass(frozen=True)
+class Conditional(Expr):
+    condition: Expr
+    question: Token
+    when_true: Expr
+    when_false: Expr
+
+
+@dataclass(frozen=True)
 class Grouping(Expr):
     inner: Expr
 
