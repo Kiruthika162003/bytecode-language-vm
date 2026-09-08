@@ -39,7 +39,13 @@ from ember.environment import Environment
 from ember.errors import Arithmetic, Arity, IndexRange, Resolve, TypeMismatch, Unbound
 from ember.function import NativeFunction
 from ember.tokenkind import TokenKind
-from ember.valueops import is_truthy, stringify, type_name, values_equal
+from ember.valueops import (
+    is_truthy,
+    iteration_source,
+    stringify,
+    type_name,
+    values_equal,
+)
 
 
 class _Return(Exception):
@@ -202,6 +208,8 @@ class TreeWalker:
                     continue
         elif isinstance(node, s.ForStmt):
             self._for(node, env)
+        elif isinstance(node, s.ForEachStmt):
+            self._for_each(node, env)
         elif isinstance(node, s.FunctionStmt):
             env.define(node.name.lexeme, TreeFunction(node, env))
         elif isinstance(node, s.ClassStmt):
@@ -263,6 +271,20 @@ class TreeWalker:
                 pass
             if node.increment is not None:
                 self._evaluate(node.increment, loop_env)
+
+    def _for_each(self, node: s.ForEachStmt, env: Environment) -> None:
+        source = iteration_source(self._evaluate(node.iterable, env))
+        for item in source:
+            # a fresh scope per iteration, so a closure made inside the body
+            # captures that iteration's value rather than the last one
+            iteration_env = Environment(env)
+            iteration_env.define(node.variable.lexeme, item)
+            try:
+                self._execute(node.body, iteration_env)
+            except _Break:
+                break
+            except _Continue:
+                continue
 
     def _evaluate(self, node: e.Expr, env: Environment) -> Any:
         self.steps += 1

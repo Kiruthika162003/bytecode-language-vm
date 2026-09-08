@@ -48,6 +48,8 @@ def prune_statement(node: s.Stmt) -> s.Stmt:
         return s.WhileStmt(node.condition, prune_statement(node.body))
     if isinstance(node, s.ForStmt):
         return _prune_for(node)
+    if isinstance(node, s.ForEachStmt):
+        return s.ForEachStmt(node.variable, node.iterable, prune_statement(node.body))
     if isinstance(node, s.FunctionStmt):
         return s.FunctionStmt(node.name, node.parameters, tuple(prune_body(node.body)))
     if isinstance(node, s.ClassStmt):

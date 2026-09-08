@@ -186,6 +186,10 @@ def fold_statement(node: s.Stmt) -> s.Stmt:
             fold_expression(node.increment) if node.increment is not None else None,
             fold_statement(node.body),
         )
+    if isinstance(node, s.ForEachStmt):
+        return s.ForEachStmt(
+            node.variable, fold_expression(node.iterable), fold_statement(node.body)
+        )
     if isinstance(node, s.FunctionStmt):
         body = tuple(fold_statement(inner) for inner in node.body)
         return s.FunctionStmt(node.name, node.parameters, body)
