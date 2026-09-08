@@ -34,6 +34,7 @@ from ember.closure import Closure, Upvalue
 from ember.errors import Arithmetic, Arity, IndexRange, StackFault, TypeMismatch, Unbound
 from ember.function import Function, NativeFunction
 from ember.opcode import OpCode
+from ember.profiler import Profile
 from ember.valueops import (
     is_truthy,
     iteration_source,
@@ -68,6 +69,13 @@ class VM:
         self.instruction_count = 0
         self.max_stack = 0
         self.open_upvalues: list[Upvalue] = []
+        # profiling is off by default so the dispatch loop pays one branch, not a
+        # line-table walk, on every instruction
+        self.profile: Profile | None = None
+
+    def enable_profiling(self) -> Profile:
+        self.profile = Profile()
+        return self.profile
 
     def define_native(
         self,
@@ -175,6 +183,8 @@ class VM:
             self.instruction_count += 1
             self.max_stack = max(self.max_stack, len(self.stack))
             opcode = OpCode(self._read_byte())
+            if self.profile is not None:
+                self.profile.record(opcode, self.current_line())
             if opcode == OpCode.CONSTANT:
                 self.stack.append(self._read_constant())
             elif opcode == OpCode.NIL:
@@ -389,6 +399,8 @@ class VM:
             )
         base = len(self.stack) - argument_count - 1
         self.frames.append(CallFrame(closure, base))
+        if self.profile is not None:
+            self.profile.record_frame()
 
     def _inherit(self) -> None:
         subclass = self._pop()
@@ -493,6 +505,8 @@ class VM:
                 )
             base = len(self.stack) - argument_count - 1
             self.frames.append(CallFrame(callee, base))
+            if self.profile is not None:
+                self.profile.record_frame()
         elif isinstance(callee, NativeFunction):
             if argument_count != callee.arity:
                 raise Arity(

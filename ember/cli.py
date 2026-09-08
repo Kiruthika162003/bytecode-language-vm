@@ -27,6 +27,7 @@ _USAGE = """usage: python -m ember.cli <command> [argument]
   eval <source>       execute a source fragment and print its output
   disassemble <file>  show the bytecode a program compiles to
   optimized <file>    show the bytecode after the optimizer runs
+  profile <file>      run a program and report where the work went
   traces              print every recorded claim and whether it holds
   check               report whether any trace is broken
   summary             print how many traces there are
@@ -69,6 +70,29 @@ def _disassemble(source: str, optimize: bool) -> int:
         return 1
     label = "optimized" if optimize else "script"
     print(disassemble(function.chunk, label))
+    return 0
+
+
+def _profile(source: str) -> int:
+    from ember.builtins import install_builtins
+    from ember.errors import EmberError
+    from ember.interpreter import build
+    from ember.profiler import render
+    from ember.vm import VM
+
+    machine = VM()
+    install_builtins(machine)
+    profile = machine.enable_profiling()
+    try:
+        function = build(source)
+        machine.interpret(function)
+    except EmberError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    for line in machine.output:
+        print(line)
+    print()
+    print(render(profile, source))
     return 0
 
 
@@ -115,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
         return _check()
     if command == "summary":
         return _summary()
-    if command in ("run", "eval", "disassemble", "optimized"):
+    if command in ("run", "eval", "disassemble", "optimized", "profile"):
         if not rest:
             print(f"{command} needs an argument", file=sys.stderr)
             return 2
@@ -126,6 +150,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         if command == "run":
             return _execute(source)
+        if command == "profile":
+            return _profile(source)
         return _disassemble(source, optimize=command == "optimized")
     print(f"unknown command {command!r}\n\n{_USAGE}", file=sys.stderr)
     return 2

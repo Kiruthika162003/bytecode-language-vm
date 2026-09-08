@@ -2,6 +2,13 @@ from __future__ import annotations
 
 from ember.cli import main
 
+FIB_SOURCE = """fn fib(n) {
+  if (n < 2) return n;
+  return fib(n - 1) + fib(n - 2);
+}
+print fib(8);
+"""
+
 
 class TestTraceCommands:
     def test_traces_prints_every_claim_and_succeeds(self, capsys):
@@ -74,6 +81,26 @@ class TestFileCommands:
         code = main(["run", str(tmp_path / "nope.ember")])
         assert code == 2
         assert "there is no file at" in capsys.readouterr().err
+
+
+class TestProfile:
+    def test_profile_reports_where_the_work_went(self, capsys, tmp_path):
+        path = tmp_path / "program.ember"
+        path.write_text(FIB_SOURCE, encoding="utf-8")
+        code = main(["profile", str(path)])
+        captured = capsys.readouterr()
+        assert code == 0
+        assert "21" in captured.out
+        assert "instructions dispatched" in captured.out
+        assert "by instruction:" in captured.out
+        assert "by line:" in captured.out
+
+    def test_a_fault_while_profiling_is_reported(self, capsys, tmp_path):
+        path = tmp_path / "bad.ember"
+        path.write_text("print 1 / 0;", encoding="utf-8")
+        code = main(["profile", str(path)])
+        assert code == 1
+        assert "error:" in capsys.readouterr().err
 
 
 class TestUsage:
