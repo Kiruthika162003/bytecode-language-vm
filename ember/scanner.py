@@ -140,6 +140,10 @@ class Scanner:
         char = self._cursor.advance()
         # the shifts are checked before the comparison operators, since '<' would
         # otherwise be taken as less-than with a stray '<' following it
+        if char == "." and self._cursor.peek() == "." and self._cursor.peek(1) == ".":
+            self._cursor.advance()
+            self._cursor.advance()
+            return self._make(TokenKind.ELLIPSIS, start)
         if char == "<" and self._cursor.match("<"):
             return self._make(TokenKind.LESS_LESS, start)
         if char == ">" and self._cursor.match(">"):

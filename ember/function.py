@@ -33,10 +33,47 @@ from ember.chunk import Chunk
 
 @dataclass
 class Function:
+    """A compiled function, including how flexibly it may be called.
+
+    Arity here counts the declared parameters, which is no longer the same as
+    the number of arguments a call must supply. Defaults fill in a missing tail,
+    and a rest parameter absorbs an unbounded extra, so the calling convention
+    needs a range rather than a single number: at least the parameters with no
+    default, and at most all of them unless a rest parameter removes the upper
+    bound. The defaults are stored as values rather than as code because they
+    are restricted to literals, which is what lets them travel with the compiled
+    function instead of being recomputed on every call.
+    """
+
     name: str
     arity: int
     chunk: Chunk
     upvalue_count: int = 0
+    defaults: tuple[Any, ...] = ()
+    is_variadic: bool = False
+
+    @property
+    def required(self) -> int:
+        """The fewest arguments a call must supply."""
+        named = self.arity - (1 if self.is_variadic else 0)
+        return named - len(self.defaults)
+
+    @property
+    def named(self) -> int:
+        """How many parameters can be filled positionally, excluding the rest."""
+        return self.arity - (1 if self.is_variadic else 0)
+
+    def accepts(self, count: int) -> bool:
+        if count < self.required:
+            return False
+        return self.is_variadic or count <= self.named
+
+    def describe_arity(self) -> str:
+        if self.is_variadic:
+            return f"at least {self.required}"
+        if self.defaults:
+            return f"between {self.required} and {self.named}"
+        return str(self.required)
 
     def __repr__(self) -> str:
         label = self.name if self.name else "<script>"

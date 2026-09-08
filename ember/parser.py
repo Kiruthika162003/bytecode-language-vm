@@ -148,18 +148,7 @@ class Parser:
         # there is nothing else a name followed by a parameter list could be
         name = self._consume(TokenKind.IDENTIFIER, "a method needs a name")
         self._consume(TokenKind.LEFT_PAREN, "a method name must be followed by '('")
-        parameters: list[Token] = []
-        if not self._check(TokenKind.RIGHT_PAREN):
-            while True:
-                if len(parameters) >= _MAX_ARGUMENTS:
-                    raise Syntax(
-                        f"a method cannot declare more than {_MAX_ARGUMENTS} parameters"
-                    )
-                parameters.append(
-                    self._consume(TokenKind.IDENTIFIER, "a parameter must be a name")
-                )
-                if not self._match(TokenKind.COMMA):
-                    break
+        parameters, defaults, is_variadic = self._parameter_list("method")
         self._consume(TokenKind.RIGHT_PAREN, "a parameter list must end with ')'")
         self._consume(TokenKind.LEFT_BRACE, "a method body must start with '{'")
         # the initializer rule is enforced here, before either backend runs, so
@@ -175,7 +164,9 @@ class Parser:
         finally:
             self._in_initializer = was_initializer
             self._in_method = was_in_method
-        return s.FunctionStmt(name, tuple(parameters), tuple(body))
+        return s.FunctionStmt(
+            name, tuple(parameters), tuple(body), tuple(defaults), is_variadic
+        )
 
     def _let_declaration(self, is_const: bool) -> s.Stmt:
         keyword = "const" if is_const else "let"
@@ -191,22 +182,65 @@ class Parser:
         self._consume(TokenKind.SEMICOLON, "a declaration must end with ';'")
         return s.LetStmt(name, initializer, is_const)
 
+    def _parameter_list(self, what: str) -> tuple[list[Token], list[object], bool]:
+        """Parse a parameter list, with optional literal defaults and a rest name."""
+        parameters: list[Token] = []
+        defaults: list[object] = []
+        is_variadic = False
+        if self._check(TokenKind.RIGHT_PAREN):
+            return parameters, defaults, is_variadic
+        while True:
+            if len(parameters) >= _MAX_ARGUMENTS:
+                raise Syntax(
+                    f"a {what} cannot declare more than {_MAX_ARGUMENTS} parameters"
+                )
+            if self._match(TokenKind.ELLIPSIS):
+                rest = self._consume(
+                    TokenKind.IDENTIFIER, "'...' must be followed by a name"
+                )
+                parameters.append(rest)
+                is_variadic = True
+                # a rest parameter absorbs everything left, so nothing can follow it
+                if self._check(TokenKind.COMMA):
+                    raise Syntax(
+                        f"the rest parameter {rest.lexeme!r} on line {rest.line} must "
+                        "be last, since it takes every remaining argument"
+                    )
+                break
+            name = self._consume(TokenKind.IDENTIFIER, "a parameter must be a name")
+            parameters.append(name)
+            if self._match(TokenKind.EQUAL):
+                defaults.append(self._literal_default(name))
+            elif defaults:
+                raise Syntax(
+                    f"the parameter {name.lexeme!r} on line {name.line} has no default "
+                    "but follows one that does; give it a default or move it earlier"
+                )
+            if not self._match(TokenKind.COMMA):
+                break
+        return parameters, defaults, is_variadic
+
+    def _literal_default(self, name: Token) -> object:
+        """Require a literal, since a default travels with the compiled function."""
+        if self._match(TokenKind.NUMBER, TokenKind.STRING):
+            return self._previous().literal
+        if self._match(TokenKind.TRUE):
+            return True
+        if self._match(TokenKind.FALSE):
+            return False
+        if self._match(TokenKind.NIL):
+            return None
+        found = self._peek()
+        raise Syntax(
+            f"the default for {name.lexeme!r} on line {found.line} must be a literal, "
+            "because it is stored with the compiled function rather than evaluated on "
+            "each call; compute a default in the body against nil instead"
+        )
+
     def _function_declaration(self) -> s.Stmt:
         name = self._consume(TokenKind.IDENTIFIER, "a function needs a name")
         self._consume(TokenKind.LEFT_PAREN, "a function name must be followed by '('")
-        parameters: list[Token] = []
-        if not self._check(TokenKind.RIGHT_PAREN):
-            while True:
-                if len(parameters) >= _MAX_ARGUMENTS:
-                    raise Syntax(
-                        f"a function cannot declare more than {_MAX_ARGUMENTS} "
-                        "parameters"
-                    )
-                parameters.append(
-                    self._consume(TokenKind.IDENTIFIER, "a parameter must be a name")
-                )
-                if not self._match(TokenKind.COMMA):
-                    break
+        parameters, defaults, is_variadic = self._parameter_list("function")
         self._consume(TokenKind.RIGHT_PAREN, "a parameter list must end with ')'")
         self._consume(TokenKind.LEFT_BRACE, "a function body must start with '{'")
         outer_loops = self._loop_depth
@@ -215,7 +249,9 @@ class Parser:
             body = self._block()
         finally:
             self._loop_depth = outer_loops
-        return s.FunctionStmt(name, tuple(parameters), tuple(body))
+        return s.FunctionStmt(
+            name, tuple(parameters), tuple(body), tuple(defaults), is_variadic
+        )
 
     def _statement(self) -> s.Stmt:
         if self._match(TokenKind.PRINT):

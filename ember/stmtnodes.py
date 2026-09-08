@@ -90,6 +90,8 @@ class FunctionStmt(Stmt):
     name: Token
     parameters: tuple[Token, ...]
     body: tuple[Stmt, ...]
+    defaults: tuple[object, ...] = ()
+    is_variadic: bool = False
 
 
 @dataclass(frozen=True)

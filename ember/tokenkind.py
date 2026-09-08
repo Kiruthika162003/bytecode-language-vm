@@ -55,6 +55,7 @@ class TokenKind(Enum):
     LESS_LESS = auto()
     GREATER_GREATER = auto()
     QUESTION = auto()
+    ELLIPSIS = auto()
 
     BANG = auto()
     BANG_EQUAL = auto()
