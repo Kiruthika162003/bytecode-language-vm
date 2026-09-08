@@ -93,8 +93,9 @@ def prune_body(statements: tuple[s.Stmt, ...]) -> list[s.Stmt]:
     kept: list[s.Stmt] = []
     for statement in statements:
         kept.append(prune_statement(statement))
-        if isinstance(statement, s.ReturnStmt):
-            # nothing after a return in this block can be reached
+        if isinstance(statement, (s.ReturnStmt, s.BreakStmt, s.ContinueStmt)):
+            # each of these leaves the block unconditionally, so nothing written
+            # after it in the same block can be reached
             break
     return kept
 

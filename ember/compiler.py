@@ -25,11 +25,15 @@ left a nested reference to fault at run time, and the note recording that
 limitation is kept here rather than deleted, because the shape of the fix,
 resolving through enclosing units and marking the captured local so its
 scope closes it instead of popping it, is the interesting part. What
-remains genuinely absent is any optimisation of the emitted code: this
-pass writes the straightforward instruction sequence for each construct
-and never folds a constant, removes a dead branch, or fuses a property
-fetch with the call that follows it, all of which a later pass could do
-over the bytecode it produces.
+remains true is that this pass never optimises: it writes the
+straightforward instruction sequence for each construct. Folding and dead
+branch removal do happen, but in a separate pass over the tree that runs
+before this one rather than here, which keeps this pass a translation and
+nothing more. What no pass yet does is work at the instruction level, so a
+redundant load is never removed, two instructions are never fused, and a
+jump that lands on another jump is never threaded; those need an
+instruction-level pass with its own jump-retargeting machinery, since
+rewriting bytecode moves every offset that points past the edit.
 """
 
 from __future__ import annotations
@@ -74,6 +78,26 @@ class _Upvalue:
         self.is_local = is_local
 
 
+class _Loop:
+    """Where a loop's break jumps must land and where continue must go back to.
+
+    A break cannot be patched when it is emitted, because the end of the loop
+    has not been compiled yet, so each one records its offset here and they
+    are all patched together once the loop closes. A continue is the opposite
+    case: its target already exists, so it is emitted as a backward jump
+    immediately. The scope depth at entry is kept because both statements
+    leave the loop body early and must discard whatever locals the body had
+    declared, which the compiler can only know by comparing depths.
+    """
+
+    __slots__ = ("breaks", "continue_target", "depth")
+
+    def __init__(self, continue_target: int, depth: int) -> None:
+        self.continue_target = continue_target
+        self.depth = depth
+        self.breaks: list[int] = []
+
+
 class _FunctionUnit:
     def __init__(self, name: str, arity: int, enclosing: _FunctionUnit | None = None) -> None:
         self.function = Function(name, arity, Chunk())
@@ -81,6 +105,7 @@ class _FunctionUnit:
         self.enclosing = enclosing
         self.upvalues: list[_Upvalue] = []
         self.is_initializer = False
+        self.loops: list[_Loop] = []
 
 
 class Compiler:
@@ -176,6 +201,10 @@ class Compiler:
             self._class(node)
         elif isinstance(node, s.ReturnStmt):
             self._return(node)
+        elif isinstance(node, s.BreakStmt):
+            self._break(node)
+        elif isinstance(node, s.ContinueStmt):
+            self._continue(node)
         else:
             raise Compile(f"the compiler does not handle the statement {type(node).__name__}")
 
@@ -230,10 +259,16 @@ class Compiler:
         self._expression(node.condition)
         exit_jump = self._emit_jump(OpCode.JUMP_IF_FALSE, line)
         self._emit(OpCode.POP, line)
+        loop = _Loop(continue_target=loop_start, depth=self._scope.depth)
+        self._unit.loops.append(loop)
         self._statement(node.body)
+        self._unit.loops.pop()
         self._emit_loop(loop_start, line)
         self._patch_jump(exit_jump)
         self._emit(OpCode.POP, line)
+        # a break lands past the condition's pop, so it leaves no residue
+        for offset in loop.breaks:
+            self._patch_jump(offset)
 
     def _for(self, node: s.ForStmt) -> None:
         self._scope.begin_scope()
@@ -255,11 +290,18 @@ class Compiler:
             self._emit_loop(loop_start, line)
             loop_start = increment_start
             self._patch_jump(body_jump)
+        # continue targets the increment rather than the condition, so the step
+        # still runs and a counting loop cannot be turned into an infinite one
+        loop = _Loop(continue_target=loop_start, depth=self._scope.depth)
+        self._unit.loops.append(loop)
         self._statement(node.body)
+        self._unit.loops.pop()
         self._emit_loop(loop_start, 1)
         if exit_jump != -1:
             self._patch_jump(exit_jump)
             self._emit(OpCode.POP, 1)
+        for offset in loop.breaks:
+            self._patch_jump(offset)
         self._discard_scope(self._scope.end_scope())
 
     def _function(self, node: s.FunctionStmt) -> None:
@@ -398,6 +440,32 @@ class Compiler:
         else:
             self._emit(OpCode.NIL, line)
         self._emit(OpCode.RETURN, line)
+
+    def _break(self, node: s.BreakStmt) -> None:
+        loop = self._innermost_loop(node.keyword.line, "break")
+        self._unwind_to(loop.depth, node.keyword.line)
+        loop.breaks.append(self._emit_jump(OpCode.JUMP, node.keyword.line))
+
+    def _continue(self, node: s.ContinueStmt) -> None:
+        loop = self._innermost_loop(node.keyword.line, "continue")
+        self._unwind_to(loop.depth, node.keyword.line)
+        self._emit_loop(loop.continue_target, node.keyword.line)
+
+    def _innermost_loop(self, line: int, word: str) -> _Loop:
+        if not self._unit.loops:
+            raise Resolve(f"'{word}' on line {line} is outside any loop")
+        return self._unit.loops[-1]
+
+    def _unwind_to(self, depth: int, line: int) -> None:
+        # leaving a loop body early still has to discard the locals the body
+        # declared, closing any an inner closure captured rather than popping it
+        for slot in range(self._scope.count - 1, -1, -1):
+            if self._scope.depth_of(slot) <= depth:
+                break
+            if self._scope.is_captured(slot):
+                self._emit(OpCode.CLOSE_UPVALUE, line)
+            else:
+                self._emit(OpCode.POP, line)
 
     def _define_name(self, name: Token, is_const: bool) -> None:
         line = name.line

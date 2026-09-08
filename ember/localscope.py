@@ -104,6 +104,9 @@ class LocalScope:
     def is_const(self, slot: int) -> bool:
         return self._locals[slot].is_const
 
+    def depth_of(self, slot: int) -> int:
+        return self._locals[slot].depth
+
     def mark_captured(self, slot: int) -> None:
         self._locals[slot].is_captured = True
 
