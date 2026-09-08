@@ -65,3 +65,21 @@ class LineTable:
     @property
     def run_count(self) -> int:
         return len(self._runs)
+
+    @property
+    def runs(self) -> tuple[tuple[int, int], ...]:
+        # exposed as immutable pairs so a serializer can write the compressed
+        # form directly instead of replaying every byte to rebuild it
+        return tuple((line, count) for line, count in self._runs)
+
+    @classmethod
+    def from_runs(cls, runs: list[tuple[int, int]]) -> LineTable:
+        table = cls()
+        for line, count in runs:
+            if line < 1:
+                raise EmberError(f"a source line is numbered from one, but got {line}")
+            if count < 1:
+                raise EmberError(f"a line run must cover at least one byte, got {count}")
+            table._runs.append([line, count])
+            table._length += count
+        return table

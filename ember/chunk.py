@@ -84,3 +84,16 @@ class Chunk:
 
     def line_at(self, offset: int) -> int:
         return self._lines.line_at(offset)
+
+    @property
+    def line_runs(self) -> tuple[tuple[int, int], ...]:
+        return self._lines.runs
+
+    @property
+    def line_length(self) -> int:
+        return self._lines.length
+
+    def adopt_line_table(self, table: LineTable) -> None:
+        # used when a chunk is rebuilt from a file rather than emitted, so the
+        # line information arrives already compressed instead of byte by byte
+        self._lines = table
