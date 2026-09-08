@@ -73,6 +73,19 @@ class VM:
         # line-table walk, on every instruction
         self.profile: Profile | None = None
 
+    def reset_execution_state(self) -> None:
+        """Discard the value and frame stacks while keeping globals and output.
+
+        A run that faulted leaves its frames in place, and reusing the machine
+        without clearing them would let the next program's return land back
+        inside the abandoned one. An interactive session reuses one machine on
+        purpose, so it resets here between inputs; globals survive, because the
+        definitions a session has built up are the whole point of keeping it.
+        """
+        self.stack.clear()
+        self.frames.clear()
+        self.open_upvalues.clear()
+
     def enable_profiling(self) -> Profile:
         self.profile = Profile()
         return self.profile

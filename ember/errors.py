@@ -36,7 +36,18 @@ class Syntax(EmberError):
     This covers an unterminated string, a stray character, a missing
     closing bracket, and every other shape that is not valid Ember
     before any meaning is assigned to it.
+
+    The at_end flag says the text ran out where more was needed, rather
+    than containing something wrong. That distinction is what lets an
+    interactive session tell an unfinished input from a mistaken one and
+    ask for another line instead of reporting an error, and carrying it
+    as a field rather than leaving it to be recovered from the message
+    text means a caller never has to match on wording.
     """
+
+    def __init__(self, message: str, at_end: bool = False) -> None:
+        super().__init__(message)
+        self.at_end = at_end
 
 
 class Resolve(EmberError):

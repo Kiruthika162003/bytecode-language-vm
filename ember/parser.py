@@ -101,8 +101,12 @@ class Parser:
         if self._check(kind):
             return self._advance()
         found = self._peek()
-        where = "at end of input" if found.kind == TokenKind.EOF else f"at {found.lexeme!r}"
-        raise Syntax(f"{message}, but found {found.kind.name} {where} on line {found.line}")
+        at_end = found.kind == TokenKind.EOF
+        where = "at end of input" if at_end else f"at {found.lexeme!r}"
+        raise Syntax(
+            f"{message}, but found {found.kind.name} {where} on line {found.line}",
+            at_end=at_end,
+        )
 
     def _declaration(self) -> s.Stmt:
         if self._match(TokenKind.LET):
@@ -467,9 +471,12 @@ class Parser:
         if self._match(TokenKind.LEFT_BRACE):
             return self._map_literal()
         found = self._peek()
+        at_end = found.kind == TokenKind.EOF
+        where = "at end of input" if at_end else f"{found.lexeme!r}"
         raise Syntax(
-            f"expected an expression but found {found.kind.name} {found.lexeme!r} "
-            f"on line {found.line}"
+            f"expected an expression but found {found.kind.name} {where} "
+            f"on line {found.line}",
+            at_end=at_end,
         )
 
     def _list_literal(self) -> e.Expr:

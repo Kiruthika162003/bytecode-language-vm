@@ -97,9 +97,9 @@ class Scanner:
         span = self._span(start)
         return Token(kind, span.text(self._cursor.source), span, literal)
 
-    def _error(self, start: Position, message: str) -> Token | None:
+    def _error(self, start: Position, message: str, at_end: bool = False) -> Token | None:
         if not self._recover:
-            raise Syntax(message)
+            raise Syntax(message, at_end=at_end)
         span = self._span(start)
         return Token(TokenKind.ERROR, span.text(self._cursor.source), span, message)
 
@@ -127,7 +127,8 @@ class Scanner:
             self._cursor.advance()
         raise Syntax(
             "a block comment was opened with /* but never closed; add a "
-            "matching */"
+            "matching */",
+            at_end=True,
         )
 
     def _scan_one(self, start: Position) -> Token | None:
@@ -160,6 +161,7 @@ class Scanner:
             return self._error(
                 start,
                 "a string was opened but never closed; add a closing quote",
+                at_end=True,
             )
         self._cursor.advance()
         raw = self._span(start).text(self._cursor.source)
