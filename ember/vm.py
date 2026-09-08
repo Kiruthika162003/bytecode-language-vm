@@ -29,6 +29,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from ember.closure import Closure, Upvalue
 from ember.errors import Arithmetic, Arity, IndexRange, StackFault, TypeMismatch, Unbound
 from ember.function import Function, NativeFunction
 from ember.opcode import OpCode
@@ -38,12 +39,16 @@ _MAX_FRAMES = 1024
 
 
 class CallFrame:
-    __slots__ = ("base", "function", "ip")
+    __slots__ = ("base", "closure", "ip")
 
-    def __init__(self, function: Function, base: int) -> None:
-        self.function = function
+    def __init__(self, closure: Closure, base: int) -> None:
+        self.closure = closure
         self.ip = 0
         self.base = base
+
+    @property
+    def function(self) -> Function:
+        return self.closure.function
 
 
 class VM:
@@ -55,6 +60,7 @@ class VM:
         self.output: list[str] = []
         self.instruction_count = 0
         self.max_stack = 0
+        self.open_upvalues: list[Upvalue] = []
 
     def define_native(
         self, name: str, arity: int, handler: Callable[[list[Any]], Any]
@@ -62,9 +68,29 @@ class VM:
         self.globals[name] = NativeFunction(name, arity, handler)
 
     def interpret(self, function: Function) -> Any:
-        self.stack.append(function)
-        self.frames.append(CallFrame(function, base=0))
+        script = Closure(function)
+        self.stack.append(script)
+        self.frames.append(CallFrame(script, base=0))
         return self._run()
+
+    def _capture_upvalue(self, location: int) -> Upvalue:
+        # open upvalues are interned by slot so two closures capturing the same
+        # variable share one indirection and therefore genuinely share the value
+        for upvalue in self.open_upvalues:
+            if not upvalue.is_closed and upvalue.location == location:
+                return upvalue
+        created = Upvalue(location)
+        self.open_upvalues.append(created)
+        return created
+
+    def _close_upvalues(self, from_location: int) -> None:
+        remaining: list[Upvalue] = []
+        for upvalue in self.open_upvalues:
+            if not upvalue.is_closed and upvalue.location >= from_location:
+                upvalue.close(self.stack)
+            else:
+                remaining.append(upvalue)
+        self.open_upvalues = remaining
 
     def _frame(self) -> CallFrame:
         return self.frames[-1]
@@ -188,9 +214,21 @@ class VM:
                 self._frame().ip -= offset
             elif opcode == OpCode.CALL:
                 self._call(self._read_byte())
+            elif opcode == OpCode.CLOSURE:
+                self._make_closure()
+            elif opcode == OpCode.GET_UPVALUE:
+                index = self._read_byte()
+                self.stack.append(self._frame().closure.upvalues[index].get(self.stack))
+            elif opcode == OpCode.SET_UPVALUE:
+                index = self._read_byte()
+                self._frame().closure.upvalues[index].set(self.stack, self._peek())
+            elif opcode == OpCode.CLOSE_UPVALUE:
+                self._close_upvalues(len(self.stack) - 1)
+                self._pop()
             elif opcode == OpCode.RETURN:
                 result = self._pop()
                 frame = self.frames.pop()
+                self._close_upvalues(frame.base)
                 if not self.frames:
                     return result
                 del self.stack[frame.base :]
@@ -269,9 +307,22 @@ class VM:
         else:
             self.stack.append(left >= right)
 
+    def _make_closure(self) -> None:
+        function = self._read_constant()
+        upvalues: list[Upvalue] = []
+        enclosing = self._frame()
+        for _ in range(function.upvalue_count):
+            is_local = self._read_byte()
+            index = self._read_byte()
+            if is_local:
+                upvalues.append(self._capture_upvalue(enclosing.base + index))
+            else:
+                upvalues.append(enclosing.closure.upvalues[index])
+        self.stack.append(Closure(function, upvalues))
+
     def _call(self, argument_count: int) -> None:
         callee = self._peek(argument_count)
-        if isinstance(callee, Function):
+        if isinstance(callee, Closure):
             if argument_count != callee.arity:
                 raise Arity(
                     f"the function {callee.name!r} expects {callee.arity} "

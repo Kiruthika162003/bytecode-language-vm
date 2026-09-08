@@ -5,10 +5,10 @@ import pytest
 from ember.errors import EmberError
 from ember.interpreter import run_output, run_treewalk_output
 
-# Programs written within the semantics both backends share: no closures over
-# an enclosing function's locals, which only the tree-walker supports. Running
-# each through both backends and demanding identical output is a strong check
-# that neither implementation has drifted from the language.
+# Running each program through the bytecode VM and the tree-walker and
+# demanding identical output is a strong check that neither implementation has
+# drifted from the language. Closures are included now that the bytecode
+# backend captures upvalues, so the two share that semantics too.
 SHARED_PROGRAMS = [
     "print 1 + 2 * 3 - 4 / 2;",
     "print (1 + 2) * (3 + 4);",
@@ -38,6 +38,22 @@ SHARED_PROGRAMS = [
     "print pow(2, 8); print gcd(24, 18); print factorial(6); print clamp(20, 0, 9);",
     'print substring("abcdef", 2, 5); print index_of("abcdef", "cd");',
     "print unique([1, 2, 2, 3, 3, 3]); print concat([1], [2, 3]);",
+    (
+        "fn make() { let c = 0; fn inc() { c = c + 1; return c; } return inc; }"
+        " let f = make(); print f(); print f(); let g = make(); print g();"
+    ),
+    (
+        "fn adder(n) { fn add(x) { return x + n; } return add; }"
+        " let a2 = adder(2); let a10 = adder(10); print a2(1); print a10(1);"
+    ),
+    (
+        "fn pair() { let n = 0; fn up() { n = n + 1; return n; }"
+        " fn get() { return n; } up(); up(); up(); return get(); } print pair();"
+    ),
+    (
+        "fn outer() { let x = 7; fn mid() { fn inner() { return x; }"
+        " return inner(); } return mid(); } print outer();"
+    ),
 ]
 
 
