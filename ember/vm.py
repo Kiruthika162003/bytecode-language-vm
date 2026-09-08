@@ -31,7 +31,16 @@ from typing import Any
 
 from ember.classes import BoundMethod, EmberClass, Instance
 from ember.closure import Closure, Upvalue
-from ember.errors import Arithmetic, Arity, IndexRange, StackFault, TypeMismatch, Unbound
+from ember.errors import (
+    Arithmetic,
+    Arity,
+    EmberError,
+    IndexRange,
+    StackFault,
+    Thrown,
+    TypeMismatch,
+    Unbound,
+)
 from ember.function import Function, NativeFunction
 from ember.opcode import OpCode
 from ember.profiler import Profile
@@ -44,6 +53,24 @@ from ember.valueops import (
 )
 
 _MAX_FRAMES = 1024
+
+
+class Handler:
+    """Where to resume, and what to restore, when something is thrown.
+
+    A handler has to remember three things, because a throw can happen an
+    arbitrary distance below where the try began: how many frames were live
+    when the try was entered, so deeper ones can be discarded; how tall the
+    value stack was, so the operands of half-finished expressions are dropped
+    rather than left as garbage; and where the catch clause starts.
+    """
+
+    __slots__ = ("frame_count", "resume_ip", "stack_depth")
+
+    def __init__(self, frame_count: int, stack_depth: int, resume_ip: int) -> None:
+        self.frame_count = frame_count
+        self.stack_depth = stack_depth
+        self.resume_ip = resume_ip
 
 
 class CallFrame:
@@ -72,6 +99,7 @@ class VM:
         # profiling is off by default so the dispatch loop pays one branch, not a
         # line-table walk, on every instruction
         self.profile: Profile | None = None
+        self.handlers: list[Handler] = []
 
     def reset_execution_state(self) -> None:
         """Discard the value and frame stacks while keeping globals and output.
@@ -85,6 +113,7 @@ class VM:
         self.stack.clear()
         self.frames.clear()
         self.open_upvalues.clear()
+        self.handlers.clear()
 
     def enable_profiling(self) -> Profile:
         self.profile = Profile()
@@ -193,150 +222,181 @@ class VM:
 
     def _run(self, stop_depth: int = 0) -> Any:  # noqa: PLR0915
         while True:
-            self.instruction_count += 1
-            self.max_stack = max(self.max_stack, len(self.stack))
-            opcode = OpCode(self._read_byte())
-            if self.profile is not None:
-                self.profile.record(opcode, self.current_line())
-            if opcode == OpCode.CONSTANT:
-                self.stack.append(self._read_constant())
-            elif opcode == OpCode.NIL:
-                self.stack.append(None)
-            elif opcode == OpCode.TRUE:
-                self.stack.append(True)
-            elif opcode == OpCode.FALSE:
-                self.stack.append(False)
-            elif opcode == OpCode.POP:
-                self._pop()
-            elif opcode == OpCode.DEFINE_GLOBAL:
-                self.globals[self._read_constant()] = self._pop()
-            elif opcode == OpCode.DEFINE_GLOBAL_CONST:
-                name = self._read_constant()
-                self.globals[name] = self._pop()
-                self.const_globals.add(name)
-            elif opcode == OpCode.GET_GLOBAL:
-                name = self._read_constant()
-                if name not in self.globals:
-                    raise Unbound(f"the name {name!r} is not defined")
-                self.stack.append(self.globals[name])
-            elif opcode == OpCode.SET_GLOBAL:
-                name = self._read_constant()
-                if name not in self.globals:
-                    raise Unbound(
-                        f"cannot assign to {name!r} because it was never declared"
-                    )
-                if name in self.const_globals:
-                    raise Unbound(
-                        f"the constant {name!r} cannot be reassigned"
-                    )
-                self.globals[name] = self._peek()
-            elif opcode == OpCode.GET_LOCAL:
-                slot = self._read_byte()
-                self.stack.append(self.stack[self._frame().base + slot])
-            elif opcode == OpCode.SET_LOCAL:
-                slot = self._read_byte()
-                self.stack[self._frame().base + slot] = self._peek()
-            elif opcode == OpCode.ADD:
-                self._add()
-            elif opcode in (
-                OpCode.SUBTRACT,
-                OpCode.MULTIPLY,
-                OpCode.DIVIDE,
-                OpCode.MODULO,
-            ):
-                self._arithmetic(opcode)
-            elif opcode == OpCode.NEGATE:
-                value = self._pop()
-                if isinstance(value, bool) or not isinstance(value, (int, float)):
-                    raise TypeMismatch(
-                        f"cannot negate a {type_name(value)}; negation needs a number"
-                    )
-                self.stack.append(-value)
-            elif opcode == OpCode.EQUAL:
-                right = self._pop()
-                left = self._pop()
-                self.stack.append(values_equal(left, right))
-            elif opcode == OpCode.NOT_EQUAL:
-                right = self._pop()
-                left = self._pop()
-                self.stack.append(not values_equal(left, right))
-            elif opcode in (
-                OpCode.LESS,
-                OpCode.LESS_EQUAL,
-                OpCode.GREATER,
-                OpCode.GREATER_EQUAL,
-            ):
-                self._compare(opcode)
-            elif opcode == OpCode.NOT:
-                self.stack.append(not is_truthy(self._pop()))
-            elif opcode == OpCode.JUMP:
-                # read the offset into a name first: it advances ip, and folding
-                # it into an augmented assignment would read ip before that
-                offset = self._read_short()
-                self._frame().ip += offset
-            elif opcode == OpCode.JUMP_IF_FALSE:
-                offset = self._read_short()
-                if not is_truthy(self._peek()):
+            try:
+                self.instruction_count += 1
+                self.max_stack = max(self.max_stack, len(self.stack))
+                opcode = OpCode(self._read_byte())
+                if self.profile is not None:
+                    self.profile.record(opcode, self.current_line())
+                if opcode == OpCode.CONSTANT:
+                    self.stack.append(self._read_constant())
+                elif opcode == OpCode.NIL:
+                    self.stack.append(None)
+                elif opcode == OpCode.TRUE:
+                    self.stack.append(True)
+                elif opcode == OpCode.FALSE:
+                    self.stack.append(False)
+                elif opcode == OpCode.POP:
+                    self._pop()
+                elif opcode == OpCode.DEFINE_GLOBAL:
+                    self.globals[self._read_constant()] = self._pop()
+                elif opcode == OpCode.DEFINE_GLOBAL_CONST:
+                    name = self._read_constant()
+                    self.globals[name] = self._pop()
+                    self.const_globals.add(name)
+                elif opcode == OpCode.GET_GLOBAL:
+                    name = self._read_constant()
+                    if name not in self.globals:
+                        raise Unbound(f"the name {name!r} is not defined")
+                    self.stack.append(self.globals[name])
+                elif opcode == OpCode.SET_GLOBAL:
+                    name = self._read_constant()
+                    if name not in self.globals:
+                        raise Unbound(
+                            f"cannot assign to {name!r} because it was never declared"
+                        )
+                    if name in self.const_globals:
+                        raise Unbound(
+                            f"the constant {name!r} cannot be reassigned"
+                        )
+                    self.globals[name] = self._peek()
+                elif opcode == OpCode.GET_LOCAL:
+                    slot = self._read_byte()
+                    self.stack.append(self.stack[self._frame().base + slot])
+                elif opcode == OpCode.SET_LOCAL:
+                    slot = self._read_byte()
+                    self.stack[self._frame().base + slot] = self._peek()
+                elif opcode == OpCode.ADD:
+                    self._add()
+                elif opcode in (
+                    OpCode.SUBTRACT,
+                    OpCode.MULTIPLY,
+                    OpCode.DIVIDE,
+                    OpCode.MODULO,
+                ):
+                    self._arithmetic(opcode)
+                elif opcode == OpCode.NEGATE:
+                    value = self._pop()
+                    if isinstance(value, bool) or not isinstance(value, (int, float)):
+                        raise TypeMismatch(
+                            f"cannot negate a {type_name(value)}; negation needs a number"
+                        )
+                    self.stack.append(-value)
+                elif opcode == OpCode.EQUAL:
+                    right = self._pop()
+                    left = self._pop()
+                    self.stack.append(values_equal(left, right))
+                elif opcode == OpCode.NOT_EQUAL:
+                    right = self._pop()
+                    left = self._pop()
+                    self.stack.append(not values_equal(left, right))
+                elif opcode in (
+                    OpCode.LESS,
+                    OpCode.LESS_EQUAL,
+                    OpCode.GREATER,
+                    OpCode.GREATER_EQUAL,
+                ):
+                    self._compare(opcode)
+                elif opcode == OpCode.NOT:
+                    self.stack.append(not is_truthy(self._pop()))
+                elif opcode == OpCode.JUMP:
+                    # read the offset into a name first: it advances ip, and folding
+                    # it into an augmented assignment would read ip before that
+                    offset = self._read_short()
                     self._frame().ip += offset
-            elif opcode == OpCode.JUMP_IF_TRUE:
-                offset = self._read_short()
-                if is_truthy(self._peek()):
-                    self._frame().ip += offset
-            elif opcode == OpCode.LOOP:
-                offset = self._read_short()
-                self._frame().ip -= offset
-            elif opcode == OpCode.CALL:
-                self._call(self._read_byte())
-            elif opcode == OpCode.CLASS:
-                self.stack.append(EmberClass(self._read_constant()))
-            elif opcode == OpCode.METHOD:
-                self._define_method(self._read_constant())
-            elif opcode == OpCode.GET_PROPERTY:
-                self._get_property(self._read_constant())
-            elif opcode == OpCode.SET_PROPERTY:
-                self._set_property(self._read_constant())
-            elif opcode == OpCode.ITER_PREPARE:
-                self.stack.append(iteration_source(self._pop()))
-            elif opcode == OpCode.ITER_SIZE:
-                self.stack.append(len(self._pop()))
-            elif opcode == OpCode.INHERIT:
-                self._inherit()
-            elif opcode == OpCode.GET_SUPER:
-                self._get_super(self._read_constant())
-            elif opcode == OpCode.CLOSURE:
-                self._make_closure()
-            elif opcode == OpCode.GET_UPVALUE:
-                index = self._read_byte()
-                self.stack.append(self._frame().closure.upvalues[index].get(self.stack))
-            elif opcode == OpCode.SET_UPVALUE:
-                index = self._read_byte()
-                self._frame().closure.upvalues[index].set(self.stack, self._peek())
-            elif opcode == OpCode.CLOSE_UPVALUE:
-                self._close_upvalues(len(self.stack) - 1)
-                self._pop()
-            elif opcode == OpCode.RETURN:
-                result = self._pop()
-                frame = self.frames.pop()
-                self._close_upvalues(frame.base)
-                if len(self.frames) <= stop_depth:
-                    # either the script finished or a re-entrant call returned to
-                    # the host code that started it
+                elif opcode == OpCode.JUMP_IF_FALSE:
+                    offset = self._read_short()
+                    if not is_truthy(self._peek()):
+                        self._frame().ip += offset
+                elif opcode == OpCode.JUMP_IF_TRUE:
+                    offset = self._read_short()
+                    if is_truthy(self._peek()):
+                        self._frame().ip += offset
+                elif opcode == OpCode.LOOP:
+                    offset = self._read_short()
+                    self._frame().ip -= offset
+                elif opcode == OpCode.CALL:
+                    self._call(self._read_byte())
+                elif opcode == OpCode.CLASS:
+                    self.stack.append(EmberClass(self._read_constant()))
+                elif opcode == OpCode.METHOD:
+                    self._define_method(self._read_constant())
+                elif opcode == OpCode.GET_PROPERTY:
+                    self._get_property(self._read_constant())
+                elif opcode == OpCode.SET_PROPERTY:
+                    self._set_property(self._read_constant())
+                elif opcode == OpCode.PUSH_HANDLER:
+                    offset = self._read_short()
+                    self.handlers.append(
+                        Handler(
+                            frame_count=len(self.frames),
+                            stack_depth=len(self.stack),
+                            resume_ip=self._frame().ip + offset,
+                        )
+                    )
+                elif opcode == OpCode.POP_HANDLER:
+                    if self.handlers:
+                        self.handlers.pop()
+                elif opcode == OpCode.THROW:
+                    thrown = self._pop()
+                    self._unwind(thrown)
+                elif opcode == OpCode.ITER_PREPARE:
+                    self.stack.append(iteration_source(self._pop()))
+                elif opcode == OpCode.ITER_SIZE:
+                    self.stack.append(len(self._pop()))
+                elif opcode == OpCode.INHERIT:
+                    self._inherit()
+                elif opcode == OpCode.GET_SUPER:
+                    self._get_super(self._read_constant())
+                elif opcode == OpCode.CLOSURE:
+                    self._make_closure()
+                elif opcode == OpCode.GET_UPVALUE:
+                    index = self._read_byte()
+                    self.stack.append(self._frame().closure.upvalues[index].get(self.stack))
+                elif opcode == OpCode.SET_UPVALUE:
+                    index = self._read_byte()
+                    self._frame().closure.upvalues[index].set(self.stack, self._peek())
+                elif opcode == OpCode.CLOSE_UPVALUE:
+                    self._close_upvalues(len(self.stack) - 1)
+                    self._pop()
+                elif opcode == OpCode.RETURN:
+                    result = self._pop()
+                    frame = self.frames.pop()
+                    self._close_upvalues(frame.base)
+                    # a return from inside a try skips its POP_HANDLER, so any
+                    # handler belonging to the frame just left is discarded here
+                    while self.handlers and self.handlers[-1].frame_count > len(self.frames):
+                        self.handlers.pop()
+                    if len(self.frames) <= stop_depth:
+                        # either the script finished or a re-entrant call returned to
+                        # the host code that started it
+                        del self.stack[frame.base :]
+                        return result
                     del self.stack[frame.base :]
-                    return result
-                del self.stack[frame.base :]
-                self.stack.append(result)
-            elif opcode == OpCode.PRINT:
-                self.output.append(stringify(self._pop()))
-            elif opcode == OpCode.BUILD_LIST:
-                self._build_list(self._read_byte())
-            elif opcode == OpCode.BUILD_MAP:
-                self._build_map(self._read_byte())
-            elif opcode == OpCode.INDEX_GET:
-                self._index_get()
-            elif opcode == OpCode.INDEX_SET:
-                self._index_set()
-            else:
-                raise StackFault(f"the machine has no handler for opcode {opcode.name}")
+                    self.stack.append(result)
+                elif opcode == OpCode.PRINT:
+                    self.output.append(stringify(self._pop()))
+                elif opcode == OpCode.BUILD_LIST:
+                    self._build_list(self._read_byte())
+                elif opcode == OpCode.BUILD_MAP:
+                    self._build_map(self._read_byte())
+                elif opcode == OpCode.INDEX_GET:
+                    self._index_get()
+                elif opcode == OpCode.INDEX_SET:
+                    self._index_set()
+                else:
+                    raise StackFault(f"the machine has no handler for opcode {opcode.name}")
+            except (Thrown, StackFault):
+                # a thrown value with nowhere to go, and an internal fault,
+                # both leave the machine rather than becoming catchable
+                raise
+            except EmberError as error:
+                if not self.handlers:
+                    raise
+                # a runtime fault inside a try is handed to the catch clause as
+                # its message, so a program can recover from division by zero
+                # the same way it recovers from something it threw itself
+                self._unwind(str(error))
 
     def _add(self) -> None:
         right = self._pop()
@@ -470,6 +530,20 @@ class VM:
             )
         target.fields[name] = value
         self.stack.append(value)
+
+    def _unwind(self, thrown: Any) -> None:
+        """Hand a thrown value to the nearest handler, or give up and raise."""
+        if not self.handlers:
+            raise Thrown(thrown, stringify(thrown))
+        handler = self.handlers.pop()
+        del self.frames[handler.frame_count :]
+        # locals above the handler's mark may have been captured, so they are
+        # closed rather than merely dropped before the stack is truncated
+        self._close_upvalues(handler.stack_depth)
+        del self.stack[handler.stack_depth :]
+        # the thrown value lands where the catch clause's name expects it
+        self.stack.append(thrown)
+        self._frame().ip = handler.resume_ip
 
     def _make_closure(self) -> None:
         function = self._read_constant()

@@ -101,11 +101,12 @@ class _Loop:
     declared, which the compiler can only know by comparing depths.
     """
 
-    __slots__ = ("breaks", "continue_target", "depth")
+    __slots__ = ("breaks", "continue_target", "depth", "handler_depth")
 
-    def __init__(self, continue_target: int, depth: int) -> None:
+    def __init__(self, continue_target: int, depth: int, handler_depth: int = 0) -> None:
         self.continue_target = continue_target
         self.depth = depth
+        self.handler_depth = handler_depth
         self.breaks: list[int] = []
 
 
@@ -117,6 +118,7 @@ class _FunctionUnit:
         self.upvalues: list[_Upvalue] = []
         self.is_initializer = False
         self.loops: list[_Loop] = []
+        self.handler_depth = 0
 
 
 class Compiler:
@@ -214,6 +216,10 @@ class Compiler:
             self._class(node)
         elif isinstance(node, s.ReturnStmt):
             self._return(node)
+        elif isinstance(node, s.TryStmt):
+            self._try(node)
+        elif isinstance(node, s.ThrowStmt):
+            self._throw(node)
         elif isinstance(node, s.BreakStmt):
             self._break(node)
         elif isinstance(node, s.ContinueStmt):
@@ -272,7 +278,11 @@ class Compiler:
         self._expression(node.condition)
         exit_jump = self._emit_jump(OpCode.JUMP_IF_FALSE, line)
         self._emit(OpCode.POP, line)
-        loop = _Loop(continue_target=loop_start, depth=self._scope.depth)
+        loop = _Loop(
+            continue_target=loop_start,
+            depth=self._scope.depth,
+            handler_depth=self._unit.handler_depth,
+        )
         self._unit.loops.append(loop)
         self._statement(node.body)
         self._unit.loops.pop()
@@ -305,7 +315,11 @@ class Compiler:
             self._patch_jump(body_jump)
         # continue targets the increment rather than the condition, so the step
         # still runs and a counting loop cannot be turned into an infinite one
-        loop = _Loop(continue_target=loop_start, depth=self._scope.depth)
+        loop = _Loop(
+            continue_target=loop_start,
+            depth=self._scope.depth,
+            handler_depth=self._unit.handler_depth,
+        )
         self._unit.loops.append(loop)
         self._statement(node.body)
         self._unit.loops.pop()
@@ -357,7 +371,11 @@ class Compiler:
         self._emit_loop(loop_start, line)
         self._patch_jump(body_jump)
 
-        loop = _Loop(continue_target=step_start, depth=self._scope.depth)
+        loop = _Loop(
+            continue_target=step_start,
+            depth=self._scope.depth,
+            handler_depth=self._unit.handler_depth,
+        )
         self._unit.loops.append(loop)
         self._scope.begin_scope()
         self._emit(OpCode.GET_LOCAL, line)
@@ -514,15 +532,45 @@ class Compiler:
             self._emit(OpCode.NIL, line)
         self._emit(OpCode.RETURN, line)
 
+    def _try(self, node: s.TryStmt) -> None:
+        line = node.keyword.line
+        handler_jump = self._emit_jump(OpCode.PUSH_HANDLER, line)
+        self._unit.handler_depth += 1
+        self._statement(node.body)
+        self._unit.handler_depth -= 1
+        self._emit(OpCode.POP_HANDLER, line)
+        done_jump = self._emit_jump(OpCode.JUMP, line)
+        self._patch_jump(handler_jump)
+        # the machine pushes the thrown value where the catch name's slot lands,
+        # so the name is simply declared over it rather than stored explicitly
+        self._scope.begin_scope()
+        self._scope.declare(node.catch_name.lexeme)
+        self._statement(node.handler)
+        self._discard_scope(self._scope.end_scope())
+        self._patch_jump(done_jump)
+
+    def _throw(self, node: s.ThrowStmt) -> None:
+        self._expression(node.value)
+        self._emit(OpCode.THROW, node.keyword.line)
+
     def _break(self, node: s.BreakStmt) -> None:
         loop = self._innermost_loop(node.keyword.line, "break")
+        self._leave_handlers(loop.handler_depth, node.keyword.line)
         self._unwind_to(loop.depth, node.keyword.line)
         loop.breaks.append(self._emit_jump(OpCode.JUMP, node.keyword.line))
 
     def _continue(self, node: s.ContinueStmt) -> None:
         loop = self._innermost_loop(node.keyword.line, "continue")
+        self._leave_handlers(loop.handler_depth, node.keyword.line)
         self._unwind_to(loop.depth, node.keyword.line)
         self._emit_loop(loop.continue_target, node.keyword.line)
+
+    def _leave_handlers(self, depth: int, line: int) -> None:
+        # jumping out of a try block skips its POP_HANDLER, so one is emitted per
+        # handler being escaped or the machine would keep a handler for a block
+        # that is no longer running
+        for _ in range(self._unit.handler_depth - depth):
+            self._emit(OpCode.POP_HANDLER, line)
 
     def _innermost_loop(self, line: int, word: str) -> _Loop:
         if not self._unit.loops:
