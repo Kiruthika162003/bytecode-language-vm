@@ -25,14 +25,23 @@ from __future__ import annotations
 
 from ember.builtins import install_builtins
 from ember.compiler import compile_program
+from ember.function import Function
+from ember.optimizer import optimize_program
 from ember.parser import parse
 from ember.scanner import scan
 from ember.treewalk import TreeWalker
 from ember.vm import VM
 
 
-def run(source: str, with_builtins: bool = True) -> VM:
-    function = compile_program(parse(scan(source)))
+def build(source: str, optimize: bool = False) -> Function:
+    statements = parse(scan(source))
+    if optimize:
+        statements = optimize_program(statements)
+    return compile_program(statements)
+
+
+def run(source: str, with_builtins: bool = True, optimize: bool = False) -> VM:
+    function = build(source, optimize=optimize)
     machine = VM()
     if with_builtins:
         install_builtins(machine)
@@ -40,17 +49,24 @@ def run(source: str, with_builtins: bool = True) -> VM:
     return machine
 
 
-def run_output(source: str, with_builtins: bool = True) -> list[str]:
-    return run(source, with_builtins=with_builtins).output
+def run_output(source: str, with_builtins: bool = True, optimize: bool = False) -> list[str]:
+    return run(source, with_builtins=with_builtins, optimize=optimize).output
 
 
-def run_treewalk(source: str, with_builtins: bool = True) -> TreeWalker:
+def run_treewalk(
+    source: str, with_builtins: bool = True, optimize: bool = False
+) -> TreeWalker:
     walker = TreeWalker()
     if with_builtins:
         install_builtins(walker)
-    walker.run(parse(scan(source)))
+    statements = parse(scan(source))
+    if optimize:
+        statements = optimize_program(statements)
+    walker.run(statements)
     return walker
 
 
-def run_treewalk_output(source: str, with_builtins: bool = True) -> list[str]:
-    return run_treewalk(source, with_builtins=with_builtins).output
+def run_treewalk_output(
+    source: str, with_builtins: bool = True, optimize: bool = False
+) -> list[str]:
+    return run_treewalk(source, with_builtins=with_builtins, optimize=optimize).output
