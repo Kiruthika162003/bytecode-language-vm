@@ -62,6 +62,7 @@ class Parser:
         self._in_method = False
         self._in_subclass = False
         self._loop_depth = 0
+        self._scope_depth = 0
 
     def parse(self) -> list[s.Stmt]:
         statements: list[s.Stmt] = []
@@ -119,7 +120,27 @@ class Parser:
             return self._function_declaration()
         if self._match(TokenKind.CLASS):
             return self._class_declaration()
+        if self._match(TokenKind.IMPORT):
+            return self._import_declaration()
         return self._statement()
+
+    def _import_declaration(self) -> s.Stmt:
+        keyword = self._previous()
+        if self._in_method or self._loop_depth or self._scope_depth:
+            raise Syntax(
+                f"the import on line {keyword.line} is not at the top level; a file is "
+                "spliced in whole, so an import cannot sit inside a block or a body"
+            )
+        if not self._check(TokenKind.STRING):
+            found = self._peek()
+            raise Syntax(
+                f"an import names a file as a string, but found {found.kind.name} on "
+                f"line {found.line}",
+                at_end=found.kind == TokenKind.EOF,
+            )
+        target = self._advance()
+        self._consume(TokenKind.SEMICOLON, "an import must end with ';'")
+        return s.ImportStmt(keyword, target.literal)
 
     def _class_declaration(self) -> s.Stmt:
         name = self._consume(TokenKind.IDENTIFIER, "a class needs a name")
@@ -247,6 +268,7 @@ class Parser:
         self._consume(TokenKind.LEFT_BRACE, "a function body must start with '{'")
         outer_loops = self._loop_depth
         self._loop_depth = 0
+        self._scope_depth = 0
         try:
             body = self._block()
         finally:
@@ -371,9 +393,15 @@ class Parser:
         return s.PrintStmt(keyword, value)
 
     def _block(self) -> list[s.Stmt]:
-        statements: list[s.Stmt] = []
-        while not self._check(TokenKind.RIGHT_BRACE) and not self._at_end():
-            statements.append(self._declaration())
+        # every brace-delimited body comes through here, which is what lets a
+        # single counter tell a top-level statement from a nested one
+        self._scope_depth += 1
+        try:
+            statements: list[s.Stmt] = []
+            while not self._check(TokenKind.RIGHT_BRACE) and not self._at_end():
+                statements.append(self._declaration())
+        finally:
+            self._scope_depth -= 1
         self._consume(TokenKind.RIGHT_BRACE, "a block must be closed with '}'")
         return statements
 

@@ -81,6 +81,7 @@ class TokenKind(Enum):
     BREAK = auto()
     CONTINUE = auto()
     IN = auto()
+    IMPORT = auto()
     MATCH = auto()
     CASE = auto()
     DEFAULT = auto()
@@ -130,6 +131,7 @@ _KEYWORD_KINDS = frozenset(
         TokenKind.BREAK,
         TokenKind.CONTINUE,
         TokenKind.IN,
+        TokenKind.IMPORT,
         TokenKind.MATCH,
         TokenKind.CASE,
         TokenKind.DEFAULT,

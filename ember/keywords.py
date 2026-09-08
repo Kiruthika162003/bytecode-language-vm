@@ -33,6 +33,7 @@ KEYWORDS: dict[str, TokenKind] = {
     "break": TokenKind.BREAK,
     "continue": TokenKind.CONTINUE,
     "in": TokenKind.IN,
+    "import": TokenKind.IMPORT,
     "match": TokenKind.MATCH,
     "case": TokenKind.CASE,
     "default": TokenKind.DEFAULT,

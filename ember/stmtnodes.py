@@ -111,6 +111,12 @@ class ContinueStmt(Stmt):
 
 
 @dataclass(frozen=True)
+class ImportStmt(Stmt):
+    keyword: Token
+    path: str
+
+
+@dataclass(frozen=True)
 class MatchCase:
     """One arm of a match: the values it answers to, and what it then does."""
 
