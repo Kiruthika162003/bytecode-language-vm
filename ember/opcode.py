@@ -75,6 +75,11 @@ class OpCode(IntEnum):
     SET_UPVALUE = 37
     CLOSE_UPVALUE = 38
 
+    CLASS = 39
+    METHOD = 40
+    GET_PROPERTY = 41
+    SET_PROPERTY = 42
+
 
 # How many operand bytes follow each opcode. A jump carries a two-byte
 # offset; the loads and calls carry one; the rest are bare. CLOSURE is the
@@ -121,6 +126,10 @@ OPERAND_BYTES: dict[OpCode, int] = {
     OpCode.GET_UPVALUE: 1,
     OpCode.SET_UPVALUE: 1,
     OpCode.CLOSE_UPVALUE: 0,
+    OpCode.CLASS: 1,
+    OpCode.METHOD: 1,
+    OpCode.GET_PROPERTY: 1,
+    OpCode.SET_PROPERTY: 1,
 }
 
 

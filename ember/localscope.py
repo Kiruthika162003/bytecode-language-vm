@@ -79,6 +79,14 @@ class LocalScope:
         self._locals.append(Local(name, self._depth, is_const))
         return len(self._locals) - 1
 
+    def declare_receiver(self) -> int:
+        # a method's slot 0 holds the instance it was called on, and unlike a
+        # plain function's reserved slot it is nameable, so `this` resolves to it
+        if len(self._locals) >= _MAX_LOCALS:
+            raise Compile("a method cannot reserve its receiver slot; it is full")
+        self._locals.append(Local("this", self._depth, is_const=True))
+        return len(self._locals) - 1
+
     def declare_reserved(self) -> int:
         # slot 0 of every frame is reserved for the callee itself and cannot
         # be named, so it is declared with a name no source can produce

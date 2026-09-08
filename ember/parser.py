@@ -35,6 +35,7 @@ from ember.token import Token
 from ember.tokenkind import TokenKind
 
 _MAX_ARGUMENTS = 255
+_INITIALIZER = "init"
 
 _COMPOUND_OPS = {
     TokenKind.PLUS_EQUAL: TokenKind.PLUS,
@@ -49,6 +50,8 @@ class Parser:
     def __init__(self, tokens: list[Token]) -> None:
         self._tokens = tokens
         self._current = 0
+        self._in_initializer = False
+        self._in_method = False
 
     def parse(self) -> list[s.Stmt]:
         statements: list[s.Stmt] = []
@@ -94,7 +97,52 @@ class Parser:
             return self._let_declaration(is_const=True)
         if self._match(TokenKind.FN):
             return self._function_declaration()
+        if self._match(TokenKind.CLASS):
+            return self._class_declaration()
         return self._statement()
+
+    def _class_declaration(self) -> s.Stmt:
+        name = self._consume(TokenKind.IDENTIFIER, "a class needs a name")
+        self._consume(TokenKind.LEFT_BRACE, "a class body must start with '{'")
+        methods: list[s.FunctionStmt] = []
+        while not self._check(TokenKind.RIGHT_BRACE) and not self._at_end():
+            methods.append(self._method())
+        self._consume(TokenKind.RIGHT_BRACE, "a class body must be closed with '}'")
+        return s.ClassStmt(name, tuple(methods))
+
+    def _method(self) -> s.FunctionStmt:
+        # a method is written without the fn keyword, since inside a class body
+        # there is nothing else a name followed by a parameter list could be
+        name = self._consume(TokenKind.IDENTIFIER, "a method needs a name")
+        self._consume(TokenKind.LEFT_PAREN, "a method name must be followed by '('")
+        parameters: list[Token] = []
+        if not self._check(TokenKind.RIGHT_PAREN):
+            while True:
+                if len(parameters) >= _MAX_ARGUMENTS:
+                    raise Syntax(
+                        f"a method cannot declare more than {_MAX_ARGUMENTS} parameters"
+                    )
+                parameters.append(
+                    self._consume(TokenKind.IDENTIFIER, "a parameter must be a name")
+                )
+                if not self._match(TokenKind.COMMA):
+                    break
+        self._consume(TokenKind.RIGHT_PAREN, "a parameter list must end with ')'")
+        self._consume(TokenKind.LEFT_BRACE, "a method body must start with '{'")
+        # the initializer rule is enforced here, before either backend runs, so
+        # both refuse the same programs rather than one catching it later
+        was_initializer = self._in_initializer
+        was_in_method = self._in_method
+        self._in_initializer = name.lexeme == _INITIALIZER
+        # a nested fn inside a method is still lexically inside it, so this flag
+        # is deliberately not cleared by an inner function declaration
+        self._in_method = True
+        try:
+            body = self._block()
+        finally:
+            self._in_initializer = was_initializer
+            self._in_method = was_in_method
+        return s.FunctionStmt(name, tuple(parameters), tuple(body))
 
     def _let_declaration(self, is_const: bool) -> s.Stmt:
         keyword = "const" if is_const else "let"
@@ -192,6 +240,11 @@ class Parser:
     def _return_statement(self) -> s.Stmt:
         keyword = self._previous()
         value = None if self._check(TokenKind.SEMICOLON) else self._expression()
+        if value is not None and self._in_initializer:
+            raise Syntax(
+                f"the initializer on line {keyword.line} cannot return a value, "
+                "since calling a class must yield the new instance"
+            )
         self._consume(TokenKind.SEMICOLON, "a return must end with ';'")
         return s.ReturnStmt(keyword, value)
 
@@ -215,9 +268,11 @@ class Parser:
             return e.Assign(target.name, value)
         if isinstance(target, e.Index):
             return e.SetIndex(target.collection, target.bracket, target.key, value)
+        if isinstance(target, e.Get):
+            return e.Set(target.target, target.name, value)
         raise Syntax(
-            "the left side of '=' is not something that can be assigned to; "
-            f"only a variable or an index is a valid target on line {equals.line}"
+            "the left side of '=' is not something that can be assigned to; only a "
+            f"variable, an index, or a property is a valid target on line {equals.line}"
         )
 
     def _finish_compound(self, target: e.Expr, operator: Token) -> e.Expr:
@@ -234,6 +289,9 @@ class Parser:
             getter = e.Index(target.collection, target.bracket, target.key)
             combined = e.Binary(getter, binary_token, right)
             return e.SetIndex(target.collection, target.bracket, target.key, combined)
+        if isinstance(target, e.Get):
+            combined = e.Binary(e.Get(target.target, target.name), binary_token, right)
+            return e.Set(target.target, target.name, combined)
         raise Syntax(
             "the left side of a compound assignment is not assignable; only a "
             f"variable or an index qualifies, on line {operator.line}"
@@ -271,6 +329,11 @@ class Parser:
                 key = self._expression()
                 self._consume(TokenKind.RIGHT_BRACKET, "an index must end with ']'")
                 expr = e.Index(expr, bracket, key)
+            elif self._match(TokenKind.DOT):
+                name = self._consume(
+                    TokenKind.IDENTIFIER, "a '.' must be followed by a property name"
+                )
+                expr = e.Get(expr, name)
             else:
                 break
         return expr
@@ -300,6 +363,14 @@ class Parser:
             return e.Literal(False, self._previous())
         if self._match(TokenKind.NIL):
             return e.Literal(None, self._previous())
+        if self._match(TokenKind.THIS):
+            keyword = self._previous()
+            if not self._in_method:
+                raise Syntax(
+                    f"'this' on line {keyword.line} is outside any method, so "
+                    "there is no instance for it to name"
+                )
+            return e.This(keyword)
         if self._match(TokenKind.IDENTIFIER):
             return e.Variable(self._previous())
         if self._match(TokenKind.LEFT_PAREN):
