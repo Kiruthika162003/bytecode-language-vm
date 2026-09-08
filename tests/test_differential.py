@@ -83,6 +83,29 @@ SHARED_PROGRAMS = [
         " print Acc().add(3).add(4).t;"
     ),
     "class B { init(v) { this.v = v; } } let b = B(1); b.v = 9; b.v += 1; print b.v;",
+    'class A { greet() { return "A"; } } class B < A {} print B().greet();',
+    (
+        'class A { greet() { return "A"; } }'
+        ' class B < A { greet() { return "B"; } }'
+        " print B().greet(); print A().greet();"
+    ),
+    (
+        'class A { greet() { return "A"; } }'
+        ' class B < A { greet() { return super.greet() + "+B"; } }'
+        " print B().greet();"
+    ),
+    (
+        "class A { init(x) { this.x = x; } }"
+        " class B < A { init(x, y) { super.init(x); this.y = y; }"
+        " sum() { return this.x + this.y; } }"
+        " print B(3, 4).sum(); print type(B(1, 2));"
+    ),
+    (
+        "class A { m() { return 1; } }"
+        " class B < A { m() { return super.m() + 1; } }"
+        " class C < B { m() { return super.m() + 1; } }"
+        " print C().m();"
+    ),
 ]
 
 
@@ -107,6 +130,11 @@ class TestErrorsAgree:
             "let x = 5; print x.f;",
             "class C {} C(1);",
             "class C { m() { return 1; } m() { return 2; } }",
+            "class A < A {}",
+            "let x = 1; class B < x {}",
+            "class A {} print super.m();",
+            "class A { m() { return super.m(); } }",
+            "class A {} class B < A { m() { return super.nope(); } } B().m();",
         ],
     )
     def test_both_backends_reject_the_same_programs(self, source: str):

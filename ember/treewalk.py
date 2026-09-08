@@ -6,9 +6,13 @@ it walks the tree and computes each node's meaning on the spot: a literal
 evaluates to its value, a binary node evaluates its two sides and
 combines them, an if statement evaluates its condition and then walks one
 branch. Statements that bind names write into an environment chain, and a
-function closes over the environment it was defined in, which is why the
-tree-walker supports true lexical closures with no extra machinery where
-the current bytecode backend does not. A return is implemented by raising
+function closes over the environment it was defined in, so closures cost
+this backend nothing at all: the captured chain is simply kept alive by
+the reference. That was once a capability the bytecode backend lacked, and
+it is worth recording that the comparison has since changed, because the
+other backend now captures the same variables through upvalues and an
+explicit closing step, several hundred lines of machinery to reach the
+behaviour this one gets from a pointer. A return is implemented by raising
 a small internal signal that the function-call boundary catches, which is
 the cleanest way to unwind out of the middle of a nested body. Keeping
 this backend means the language has two independent implementations of
@@ -102,6 +106,8 @@ class TreeInstance:
         return f"<{self.klass.name} instance>"
 
 
+_SUPER = "super"
+
 _COMPARISONS = (
     TokenKind.LESS,
     TokenKind.LESS_EQUAL,
@@ -160,6 +166,21 @@ class TreeWalker:
 
     def _class(self, node: s.ClassStmt, env: Environment) -> None:
         klass = TreeClass(node.name.lexeme)
+        method_env = env
+        if node.superclass is not None:
+            superclass = env.get(node.superclass.lexeme)
+            if not isinstance(superclass, TreeClass):
+                raise TypeMismatch(
+                    f"a class can only inherit from a class, and this is a "
+                    f"{type_name(superclass)}"
+                )
+            # inherited methods are copied in first so an override below simply
+            # replaces the entry, matching how the bytecode backend flattens
+            klass.methods.update(superclass.methods)
+            # methods see the superclass through an environment binding, which is
+            # what lets super keep working after the declaration has finished
+            method_env = Environment(env)
+            method_env.define(_SUPER, superclass)
         seen: set[str] = set()
         for method in node.methods:
             if method.name.lexeme in seen:
@@ -168,7 +189,7 @@ class TreeWalker:
                     f"{method.name.lexeme!r} twice; remove one of them"
                 )
             seen.add(method.name.lexeme)
-            klass.methods[method.name.lexeme] = TreeFunction(method, env)
+            klass.methods[method.name.lexeme] = TreeFunction(method, method_env)
         env.define(node.name.lexeme, klass)
 
     def _execute_block(self, statements: tuple[s.Stmt, ...], env: Environment) -> None:
@@ -214,6 +235,8 @@ class TreeWalker:
             return self._set_property(node, env)
         if isinstance(node, e.This):
             return env.get("this")
+        if isinstance(node, e.Super):
+            return self._super(node, env)
         if isinstance(node, e.ListLiteral):
             return [self._evaluate(item, env) for item in node.elements]
         if isinstance(node, e.MapLiteral):
@@ -338,6 +361,17 @@ class TreeWalker:
         if callee.is_initializer:
             return call_env.get("this")
         return None
+
+    def _super(self, node: e.Super, env: Environment) -> Any:
+        superclass = env.get(_SUPER)
+        receiver = env.get("this")
+        method = superclass.find_method(node.method.lexeme)
+        if method is None:
+            raise Unbound(
+                f"the superclass {superclass.name} has no method "
+                f"{node.method.lexeme!r} for 'super' to reach"
+            )
+        return method.bind(receiver)
 
     def _get_property(self, node: e.Get, env: Environment) -> Any:
         target = self._evaluate(node.target, env)
