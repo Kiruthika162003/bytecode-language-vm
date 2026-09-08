@@ -285,6 +285,8 @@ class Compiler:
             self._call(node)
         elif isinstance(node, e.Index):
             self._index(node)
+        elif isinstance(node, e.SetIndex):
+            self._set_index(node)
         elif isinstance(node, e.ListLiteral):
             self._list(node)
         elif isinstance(node, e.MapLiteral):
@@ -376,6 +378,12 @@ class Compiler:
         self._expression(node.key)
         self._emit(OpCode.INDEX_GET, node.bracket.line)
 
+    def _set_index(self, node: e.SetIndex) -> None:
+        self._expression(node.collection)
+        self._expression(node.key)
+        self._expression(node.value)
+        self._emit(OpCode.INDEX_SET, node.bracket.line)
+
     def _list(self, node: e.ListLiteral) -> None:
         for element in node.elements:
             self._expression(element)
@@ -404,7 +412,7 @@ class Compiler:
             return self._line_of(node.inner)
         if isinstance(node, e.Call):
             return node.paren.line
-        if isinstance(node, e.Index):
+        if isinstance(node, (e.Index, e.SetIndex)):
             return node.bracket.line
         if isinstance(node, e.ListLiteral):
             return node.bracket.line

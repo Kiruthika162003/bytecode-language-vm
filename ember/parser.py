@@ -36,6 +36,14 @@ from ember.tokenkind import TokenKind
 
 _MAX_ARGUMENTS = 255
 
+_COMPOUND_OPS = {
+    TokenKind.PLUS_EQUAL: TokenKind.PLUS,
+    TokenKind.MINUS_EQUAL: TokenKind.MINUS,
+    TokenKind.STAR_EQUAL: TokenKind.STAR,
+    TokenKind.SLASH_EQUAL: TokenKind.SLASH,
+    TokenKind.PERCENT_EQUAL: TokenKind.PERCENT,
+}
+
 
 class Parser:
     def __init__(self, tokens: list[Token]) -> None:
@@ -195,15 +203,41 @@ class Parser:
     def _expression(self) -> e.Expr:
         target = self._binary(Precedence.OR)
         if self._match(TokenKind.EQUAL):
-            equals = self._previous()
-            value = self._expression()
-            if isinstance(target, e.Variable):
-                return e.Assign(target.name, value)
-            raise Syntax(
-                "the left side of '=' is not something that can be assigned to; "
-                f"only a variable name is a valid target on line {equals.line}"
-            )
+            return self._finish_assignment(target, self._previous())
+        if self._peek().kind in _COMPOUND_OPS:
+            operator = self._advance()
+            return self._finish_compound(target, operator)
         return target
+
+    def _finish_assignment(self, target: e.Expr, equals: Token) -> e.Expr:
+        value = self._expression()
+        if isinstance(target, e.Variable):
+            return e.Assign(target.name, value)
+        if isinstance(target, e.Index):
+            return e.SetIndex(target.collection, target.bracket, target.key, value)
+        raise Syntax(
+            "the left side of '=' is not something that can be assigned to; "
+            f"only a variable or an index is a valid target on line {equals.line}"
+        )
+
+    def _finish_compound(self, target: e.Expr, operator: Token) -> e.Expr:
+        # x += e becomes x = x + e; note this re-evaluates the target, so a
+        # target with side effects like a[f()] += 1 calls f twice, which a
+        # dup-based compiler would avoid at the cost of more machinery
+        right = self._expression()
+        binary_kind = _COMPOUND_OPS[operator.kind]
+        binary_token = Token(binary_kind, operator.lexeme[:-1], operator.span)
+        if isinstance(target, e.Variable):
+            combined = e.Binary(e.Variable(target.name), binary_token, right)
+            return e.Assign(target.name, combined)
+        if isinstance(target, e.Index):
+            getter = e.Index(target.collection, target.bracket, target.key)
+            combined = e.Binary(getter, binary_token, right)
+            return e.SetIndex(target.collection, target.bracket, target.key, combined)
+        raise Syntax(
+            "the left side of a compound assignment is not assignable; only a "
+            f"variable or an index qualifies, on line {operator.line}"
+        )
 
     def _binary(self, min_precedence: Precedence) -> e.Expr:
         left = self._unary()

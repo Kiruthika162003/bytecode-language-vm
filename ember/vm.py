@@ -203,6 +203,8 @@ class VM:
                 self._build_map(self._read_byte())
             elif opcode == OpCode.INDEX_GET:
                 self._index_get()
+            elif opcode == OpCode.INDEX_SET:
+                self._index_set()
             else:
                 raise StackFault(f"the machine has no handler for opcode {opcode.name}")
 
@@ -352,3 +354,32 @@ class VM:
                 f"a {type_name(collection)} cannot be indexed; index a list, "
                 "map, or string"
             )
+
+    def _index_set(self) -> None:
+        value = self._pop()
+        key = self._pop()
+        collection = self._pop()
+        if isinstance(collection, list):
+            if isinstance(key, bool) or not isinstance(key, int):
+                raise TypeMismatch(
+                    f"a list index must be an integer, not a {type_name(key)}"
+                )
+            if not -len(collection) <= key < len(collection):
+                raise IndexRange(
+                    f"the index {key} is outside a list of length "
+                    f"{len(collection)}"
+                )
+            collection[key] = value
+        elif isinstance(collection, dict):
+            if isinstance(key, (list, dict)):
+                raise TypeMismatch(
+                    f"a {type_name(key)} cannot be a map key; keys must be "
+                    "numbers, strings, or booleans"
+                )
+            collection[key] = value
+        else:
+            raise TypeMismatch(
+                f"a {type_name(collection)} cannot be assigned by index; only a "
+                "list or a map can, and a string is immutable"
+            )
+        self.stack.append(value)

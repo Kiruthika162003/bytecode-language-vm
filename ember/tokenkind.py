@@ -42,6 +42,12 @@ class TokenKind(Enum):
     SLASH = auto()
     PERCENT = auto()
 
+    PLUS_EQUAL = auto()
+    MINUS_EQUAL = auto()
+    STAR_EQUAL = auto()
+    SLASH_EQUAL = auto()
+    PERCENT_EQUAL = auto()
+
     BANG = auto()
     BANG_EQUAL = auto()
     EQUAL = auto()

@@ -46,10 +46,6 @@ _SINGLE = {
     ".": TokenKind.DOT,
     ";": TokenKind.SEMICOLON,
     ":": TokenKind.COLON,
-    "+": TokenKind.PLUS,
-    "-": TokenKind.MINUS,
-    "*": TokenKind.STAR,
-    "%": TokenKind.PERCENT,
 }
 
 _MAYBE_EQUAL = {
@@ -57,6 +53,11 @@ _MAYBE_EQUAL = {
     "=": (TokenKind.EQUAL, TokenKind.EQUAL_EQUAL),
     "<": (TokenKind.LESS, TokenKind.LESS_EQUAL),
     ">": (TokenKind.GREATER, TokenKind.GREATER_EQUAL),
+    "+": (TokenKind.PLUS, TokenKind.PLUS_EQUAL),
+    "-": (TokenKind.MINUS, TokenKind.MINUS_EQUAL),
+    "*": (TokenKind.STAR, TokenKind.STAR_EQUAL),
+    "/": (TokenKind.SLASH, TokenKind.SLASH_EQUAL),
+    "%": (TokenKind.PERCENT, TokenKind.PERCENT_EQUAL),
 }
 
 

@@ -91,6 +91,14 @@ class Index(Expr):
 
 
 @dataclass(frozen=True)
+class SetIndex(Expr):
+    collection: Expr
+    bracket: Token
+    key: Expr
+    value: Expr
+
+
+@dataclass(frozen=True)
 class ListLiteral(Expr):
     bracket: Token
     elements: tuple[Expr, ...]
