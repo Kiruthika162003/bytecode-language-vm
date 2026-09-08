@@ -26,6 +26,7 @@ from __future__ import annotations
 from ember.builtins import install_builtins
 from ember.compiler import compile_program
 from ember.function import Function
+from ember.modules import load_program
 from ember.optimizer import optimize_program
 from ember.parser import parse
 from ember.peephole import optimize_function
@@ -34,15 +35,22 @@ from ember.treewalk import TreeWalker
 from ember.vm import VM
 
 
-def build(source: str, optimize: bool = False, peephole: bool = False) -> Function:
+def build(
+    source: str,
+    optimize: bool = False,
+    peephole: bool = False,
+    path: str | None = None,
+) -> Function:
     """Compile source, optionally through the tree passes and the bytecode pass.
 
     The two optimizers are separate flags rather than one, because they work at
     different altitudes and each is worth being able to measure alone: the tree
     passes fold and prune what the program says, the peephole pass rewrites what
-    the compiler emitted.
+    the compiler emitted. Passing a path turns imports on, since an import names a
+    file relative to the one importing it and a fragment with no path has no
+    neighbours to name.
     """
-    statements = parse(scan(source))
+    statements = load_program(source, path) if path is not None else parse(scan(source))
     if optimize:
         statements = optimize_program(statements)
     function = compile_program(statements)
@@ -56,8 +64,9 @@ def run(
     with_builtins: bool = True,
     optimize: bool = False,
     peephole: bool = False,
+    path: str | None = None,
 ) -> VM:
-    function = build(source, optimize=optimize, peephole=peephole)
+    function = build(source, optimize=optimize, peephole=peephole, path=path)
     machine = VM()
     if with_builtins:
         install_builtins(machine)
@@ -70,9 +79,14 @@ def run_output(
     with_builtins: bool = True,
     optimize: bool = False,
     peephole: bool = False,
+    path: str | None = None,
 ) -> list[str]:
     return run(
-        source, with_builtins=with_builtins, optimize=optimize, peephole=peephole
+        source,
+        with_builtins=with_builtins,
+        optimize=optimize,
+        peephole=peephole,
+        path=path,
     ).output
 
 

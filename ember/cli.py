@@ -49,12 +49,12 @@ def _read(path: str) -> str | None:
     return location.read_text(encoding="utf-8")
 
 
-def _execute(source: str) -> int:
+def _execute(source: str, path: str | None = None) -> int:
     from ember.errors import EmberError
     from ember.interpreter import run
 
     try:
-        machine = run(source)
+        machine = run(source, path=path)
     except EmberError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -232,7 +232,8 @@ def main(argv: list[str] | None = None) -> int:
         if source is None:
             return 2
         if command == "run":
-            return _execute(source)
+            # a file may import its neighbours, so the path travels with the source
+            return _execute(source, path=rest[0])
         if command == "profile":
             return _profile(source)
         if command == "format":
