@@ -186,6 +186,15 @@ def fold_statement(node: s.Stmt) -> s.Stmt:
             fold_expression(node.increment) if node.increment is not None else None,
             fold_statement(node.body),
         )
+    if isinstance(node, s.TryStmt):
+        return s.TryStmt(
+            node.keyword,
+            fold_statement(node.body),
+            node.catch_name,
+            fold_statement(node.handler),
+        )
+    if isinstance(node, s.ThrowStmt):
+        return s.ThrowStmt(node.keyword, fold_expression(node.value))
     if isinstance(node, s.ForEachStmt):
         return s.ForEachStmt(
             node.variable, fold_expression(node.iterable), fold_statement(node.body)

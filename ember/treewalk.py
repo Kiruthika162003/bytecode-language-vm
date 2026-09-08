@@ -36,7 +36,17 @@ from ember import exprnodes as e
 from ember import stmtnodes as s
 from ember.classes import INITIALIZER
 from ember.environment import Environment
-from ember.errors import Arithmetic, Arity, IndexRange, Resolve, TypeMismatch, Unbound
+from ember.errors import (
+    Arithmetic,
+    Arity,
+    EmberError,
+    IndexRange,
+    Resolve,
+    StackFault,
+    Thrown,
+    TypeMismatch,
+    Unbound,
+)
 from ember.function import NativeFunction
 from ember.tokenkind import TokenKind
 from ember.valueops import (
@@ -49,6 +59,14 @@ from ember.valueops import (
 
 
 class _Return(Exception):
+    def __init__(self, value: Any) -> None:
+        super().__init__()
+        self.value = value
+
+
+class _Thrown(Exception):
+    """Carries a thrown value up to the nearest enclosing try."""
+
     def __init__(self, value: Any) -> None:
         super().__init__()
         self.value = value
@@ -179,8 +197,11 @@ class TreeWalker:
         raise TypeMismatch(f"a {type_name(callee)} is not callable")
 
     def run(self, statements: list[s.Stmt]) -> None:
-        for statement in statements:
-            self._execute(statement, self.globals)
+        try:
+            for statement in statements:
+                self._execute(statement, self.globals)
+        except _Thrown as signal:
+            raise Thrown(signal.value, stringify(signal.value)) from None
 
     def _execute(self, node: s.Stmt, env: Environment) -> None:
         self.steps += 1
@@ -217,12 +238,32 @@ class TreeWalker:
         elif isinstance(node, s.ReturnStmt):
             value = self._evaluate(node.value, env) if node.value else None
             raise _Return(value)
+        elif isinstance(node, s.TryStmt):
+            self._try(node, env)
+        elif isinstance(node, s.ThrowStmt):
+            raise _Thrown(self._evaluate(node.value, env))
         elif isinstance(node, s.BreakStmt):
             raise _Break
         elif isinstance(node, s.ContinueStmt):
             raise _Continue
         else:
             raise TypeMismatch(f"the tree-walker cannot execute {type(node).__name__}")
+
+    def _try(self, node: s.TryStmt, env: Environment) -> None:
+        try:
+            self._execute(node.body, env)
+        except _Thrown as signal:
+            caught = signal.value
+        except (StackFault, Thrown):
+            raise
+        except EmberError as error:
+            # a runtime fault becomes its message, matching the compiled backend
+            caught = str(error)
+        else:
+            return
+        handler_env = Environment(env)
+        handler_env.define(node.catch_name.lexeme, caught)
+        self._execute(node.handler, handler_env)
 
     def _class(self, node: s.ClassStmt, env: Environment) -> None:
         klass = TreeClass(node.name.lexeme)

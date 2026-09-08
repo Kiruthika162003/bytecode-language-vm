@@ -48,6 +48,16 @@ def prune_statement(node: s.Stmt) -> s.Stmt:
         return s.WhileStmt(node.condition, prune_statement(node.body))
     if isinstance(node, s.ForStmt):
         return _prune_for(node)
+    if isinstance(node, s.TryStmt):
+        # the body is pruned but the try itself is never removed even when the
+        # body cannot throw, because proving that would need to know what every
+        # call it makes can do
+        return s.TryStmt(
+            node.keyword,
+            prune_statement(node.body),
+            node.catch_name,
+            prune_statement(node.handler),
+        )
     if isinstance(node, s.ForEachStmt):
         return s.ForEachStmt(node.variable, node.iterable, prune_statement(node.body))
     if isinstance(node, s.FunctionStmt):
@@ -95,7 +105,7 @@ def prune_body(statements: tuple[s.Stmt, ...]) -> list[s.Stmt]:
     kept: list[s.Stmt] = []
     for statement in statements:
         kept.append(prune_statement(statement))
-        if isinstance(statement, (s.ReturnStmt, s.BreakStmt, s.ContinueStmt)):
+        if isinstance(statement, (s.ReturnStmt, s.BreakStmt, s.ContinueStmt, s.ThrowStmt)):
             # each of these leaves the block unconditionally, so nothing written
             # after it in the same block can be reached
             break
