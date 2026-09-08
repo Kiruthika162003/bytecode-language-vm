@@ -103,6 +103,25 @@ class TestProfile:
         assert "error:" in capsys.readouterr().err
 
 
+class TestFormat:
+    def test_format_prints_a_canonical_layout(self, capsys, tmp_path):
+        path = tmp_path / "messy.ember"
+        path.write_text('let x=1+2*3;if(x>3){print "big";}', encoding="utf-8")
+        code = main(["format", str(path)])
+        captured = capsys.readouterr()
+        assert code == 0
+        assert "let x = 1 + 2 * 3;" in captured.out
+        assert "if (x > 3) {" in captured.out
+        assert '  print "big";' in captured.out
+
+    def test_a_syntax_fault_is_reported(self, capsys, tmp_path):
+        path = tmp_path / "bad.ember"
+        path.write_text("let x = ;", encoding="utf-8")
+        code = main(["format", str(path)])
+        assert code == 1
+        assert "error:" in capsys.readouterr().err
+
+
 class TestRepl:
     def test_it_evaluates_lines_and_ends_on_end_of_input(self, capsys, monkeypatch):
         lines = iter(["1 + 2;", "fn dbl(x) { return x * 2; }", "dbl(4);"])

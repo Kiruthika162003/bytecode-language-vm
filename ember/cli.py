@@ -30,6 +30,7 @@ _USAGE = """usage: python -m ember.cli <command> [argument]
   disassemble <file>  show the bytecode a program compiles to
   optimized <file>    show the bytecode after the optimizer runs
   profile <file>      run a program and report where the work went
+  format <file>       print the program in one canonical layout
   repl                start an interactive session
   traces              print every recorded claim and whether it holds
   check               report whether any trace is broken
@@ -73,6 +74,21 @@ def _disassemble(source: str, optimize: bool) -> int:
         return 1
     label = "optimized" if optimize else "script"
     print(disassemble(function.chunk, label))
+    return 0
+
+
+def _format(source: str) -> int:
+    from ember.errors import EmberError
+    from ember.formatter import format_program
+    from ember.parser import parse
+    from ember.scanner import scan
+
+    try:
+        statements = parse(scan(source))
+    except EmberError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    print(format_program(statements), end="")
     return 0
 
 
@@ -173,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
         return _summary()
     if command == "repl":
         return _repl()
-    if command in ("run", "eval", "disassemble", "optimized", "profile"):
+    if command in ("run", "eval", "disassemble", "optimized", "profile", "format"):
         if not rest:
             print(f"{command} needs an argument", file=sys.stderr)
             return 2
@@ -186,6 +202,8 @@ def main(argv: list[str] | None = None) -> int:
             return _execute(source)
         if command == "profile":
             return _profile(source)
+        if command == "format":
+            return _format(source)
         return _disassemble(source, optimize=command == "optimized")
     print(f"unknown command {command!r}\n\n{_USAGE}", file=sys.stderr)
     return 2
