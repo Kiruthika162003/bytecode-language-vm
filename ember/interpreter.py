@@ -28,20 +28,36 @@ from ember.compiler import compile_program
 from ember.function import Function
 from ember.optimizer import optimize_program
 from ember.parser import parse
+from ember.peephole import optimize_function
 from ember.scanner import scan
 from ember.treewalk import TreeWalker
 from ember.vm import VM
 
 
-def build(source: str, optimize: bool = False) -> Function:
+def build(source: str, optimize: bool = False, peephole: bool = False) -> Function:
+    """Compile source, optionally through the tree passes and the bytecode pass.
+
+    The two optimizers are separate flags rather than one, because they work at
+    different altitudes and each is worth being able to measure alone: the tree
+    passes fold and prune what the program says, the peephole pass rewrites what
+    the compiler emitted.
+    """
     statements = parse(scan(source))
     if optimize:
         statements = optimize_program(statements)
-    return compile_program(statements)
+    function = compile_program(statements)
+    if peephole:
+        optimize_function(function)
+    return function
 
 
-def run(source: str, with_builtins: bool = True, optimize: bool = False) -> VM:
-    function = build(source, optimize=optimize)
+def run(
+    source: str,
+    with_builtins: bool = True,
+    optimize: bool = False,
+    peephole: bool = False,
+) -> VM:
+    function = build(source, optimize=optimize, peephole=peephole)
     machine = VM()
     if with_builtins:
         install_builtins(machine)
@@ -49,8 +65,15 @@ def run(source: str, with_builtins: bool = True, optimize: bool = False) -> VM:
     return machine
 
 
-def run_output(source: str, with_builtins: bool = True, optimize: bool = False) -> list[str]:
-    return run(source, with_builtins=with_builtins, optimize=optimize).output
+def run_output(
+    source: str,
+    with_builtins: bool = True,
+    optimize: bool = False,
+    peephole: bool = False,
+) -> list[str]:
+    return run(
+        source, with_builtins=with_builtins, optimize=optimize, peephole=peephole
+    ).output
 
 
 def run_treewalk(

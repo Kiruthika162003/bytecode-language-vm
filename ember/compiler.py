@@ -29,11 +29,17 @@ remains true is that this pass never optimises: it writes the
 straightforward instruction sequence for each construct. Folding and dead
 branch removal do happen, but in a separate pass over the tree that runs
 before this one rather than here, which keeps this pass a translation and
-nothing more. What no pass yet does is work at the instruction level, so a
-redundant load is never removed, two instructions are never fused, and a
-jump that lands on another jump is never threaded; those need an
-instruction-level pass with its own jump-retargeting machinery, since
-rewriting bytecode moves every offset that points past the edit.
+nothing more. This docstring long said that nothing worked at the
+instruction level, that a redundant load was never removed and a jump
+landing on another jump never threaded, and that such a pass would need
+its own jump-retargeting machinery because rewriting bytecode moves every
+offset that points past the edit. That prediction was right about the
+difficulty and is now out of date about the absence: a peephole pass does
+both, and the retargeting it needed turned out to be a matter of decoding
+jumps into references to instructions rather than distances in bytes,
+after which deletion is safe. What this compiler still does, and should,
+is emit the straightforward sequence and leave the tightening to a pass
+whose only job is that.
 """
 
 from __future__ import annotations
