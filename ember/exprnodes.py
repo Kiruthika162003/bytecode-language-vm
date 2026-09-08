@@ -99,6 +99,24 @@ class SetIndex(Expr):
 
 
 @dataclass(frozen=True)
+class Get(Expr):
+    target: Expr
+    name: Token
+
+
+@dataclass(frozen=True)
+class Set(Expr):
+    target: Expr
+    name: Token
+    value: Expr
+
+
+@dataclass(frozen=True)
+class This(Expr):
+    keyword: Token
+
+
+@dataclass(frozen=True)
 class ListLiteral(Expr):
     bracket: Token
     elements: tuple[Expr, ...]

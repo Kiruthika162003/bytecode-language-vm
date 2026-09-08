@@ -34,6 +34,8 @@ KEYWORDS: dict[str, TokenKind] = {
     "return": TokenKind.RETURN,
     "let": TokenKind.LET,
     "const": TokenKind.CONST,
+    "class": TokenKind.CLASS,
+    "this": TokenKind.THIS,
     "true": TokenKind.TRUE,
     "false": TokenKind.FALSE,
     "nil": TokenKind.NIL,

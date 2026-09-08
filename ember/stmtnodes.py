@@ -89,3 +89,9 @@ class FunctionStmt(Stmt):
 class ReturnStmt(Stmt):
     keyword: Token
     value: Expr | None
+
+
+@dataclass(frozen=True)
+class ClassStmt(Stmt):
+    name: Token
+    methods: tuple[FunctionStmt, ...]

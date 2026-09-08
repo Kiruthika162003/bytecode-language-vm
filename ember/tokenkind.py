@@ -72,6 +72,8 @@ class TokenKind(Enum):
     RETURN = auto()
     LET = auto()
     CONST = auto()
+    CLASS = auto()
+    THIS = auto()
     TRUE = auto()
     FALSE = auto()
     NIL = auto()
@@ -108,6 +110,8 @@ _KEYWORD_KINDS = frozenset(
         TokenKind.RETURN,
         TokenKind.LET,
         TokenKind.CONST,
+        TokenKind.CLASS,
+        TokenKind.THIS,
         TokenKind.TRUE,
         TokenKind.FALSE,
         TokenKind.NIL,
