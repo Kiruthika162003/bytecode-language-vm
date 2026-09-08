@@ -30,6 +30,7 @@ from typing import Any
 
 from ember import exprnodes as e
 from ember import stmtnodes as s
+from ember.interpolation import TEXT as _TEXT
 from ember.token import Token
 from ember.tokenkind import TokenKind
 from ember.valueops import is_truthy, values_equal
@@ -82,6 +83,8 @@ def fold_expression(node: e.Expr) -> e.Expr:
         return _fold_logical(node)
     if isinstance(node, e.Conditional):
         return _fold_conditional(node)
+    if isinstance(node, e.Interpolation):
+        return _fold_interpolation(node)
     if isinstance(node, e.Assign):
         return e.Assign(node.name, fold_expression(node.value))
     if isinstance(node, e.Call):
@@ -185,6 +188,24 @@ def _fold_logical(node: e.Logical) -> e.Expr:
             return left if not truthy else right
         return left if truthy else right
     return e.Logical(left, node.operator, right)
+
+
+def _fold_interpolation(node: e.Interpolation) -> e.Expr:
+    folded: list[tuple[str, object]] = []
+    for kind, value in node.parts:
+        if kind == _TEXT:
+            folded.append((kind, value))
+            continue
+        inner = fold_expression(value)
+        if isinstance(inner, e.Literal) and isinstance(inner.value, str):
+            # a hole holding a string literal is just more text
+            folded.append((_TEXT, inner.value))
+            continue
+        folded.append((kind, inner))
+    if all(kind == _TEXT for kind, _ in folded):
+        joined = "".join(str(value) for _, value in folded)
+        return _literal(joined, node.token)
+    return e.Interpolation(node.token, tuple(folded))
 
 
 def _fold_conditional(node: e.Conditional) -> e.Expr:

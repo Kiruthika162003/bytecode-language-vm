@@ -50,6 +50,7 @@ from ember.chunk import Chunk
 from ember.classes import INITIALIZER
 from ember.errors import Compile, Immutable, Resolve
 from ember.function import Function
+from ember.interpolation import TEXT as _TEXT
 from ember.localscope import Local, LocalScope
 from ember.opcode import OpCode
 from ember.token import Token
@@ -646,6 +647,8 @@ class Compiler:
             self._index(node)
         elif isinstance(node, e.SetIndex):
             self._set_index(node)
+        elif isinstance(node, e.Interpolation):
+            self._interpolation(node)
         elif isinstance(node, e.Conditional):
             self._conditional(node)
         elif isinstance(node, e.Get):
@@ -759,6 +762,25 @@ class Compiler:
         self._expression(node.key)
         self._emit(OpCode.INDEX_GET, node.bracket.line)
 
+    def _interpolation(self, node: e.Interpolation) -> None:
+        # each piece is pushed as a string and the pieces are added together, so
+        # the result is built by the same concatenation a program could write by
+        # hand; the only thing the machine adds is turning a value into its text
+        line = node.token.line
+        if not node.parts:
+            self._emit_constant("", line)
+            return
+        first = True
+        for kind, value in node.parts:
+            if kind == _TEXT:
+                self._emit_constant(value, line)
+            else:
+                self._expression(value)
+                self._emit(OpCode.TO_STRING, line)
+            if not first:
+                self._emit(OpCode.ADD, line)
+            first = False
+
     def _conditional(self, node: e.Conditional) -> None:
         # the same shape as an if statement, except each arm leaves a value, so
         # the whole expression yields whichever arm ran
@@ -864,6 +886,8 @@ class Compiler:
             return node.name.line
         if isinstance(node, (e.This, e.Super)):
             return node.keyword.line
+        if isinstance(node, e.Interpolation):
+            return node.token.line
         if isinstance(node, e.Conditional):
             return node.question.line
         if isinstance(node, e.ListLiteral):

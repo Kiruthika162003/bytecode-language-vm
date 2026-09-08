@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from ember import exprnodes as e
 from ember import stmtnodes as s
+from ember.interpolation import TEXT as _TEXT
 from ember.precedence import Precedence, infix_precedence
 from ember.tokenkind import TokenKind
 from ember.valueops import stringify
@@ -73,6 +74,16 @@ def _precedence_of(node: e.Expr) -> Precedence:
 def expression(node: e.Expr) -> str:
     if isinstance(node, e.Literal):
         return _literal_text(node.value)
+    if isinstance(node, e.Interpolation):
+        pieces = []
+        for kind, value in node.parts:
+            if kind == _TEXT:
+                inner = value.replace(chr(92), chr(92) * 2).replace('"', chr(92) + '"')
+                inner = inner.replace("$", chr(92) + "$")
+                pieces.append(inner.replace(chr(10), chr(92) + "n"))
+            else:
+                pieces.append("${" + expression(value) + "}")
+        return '"' + "".join(pieces) + '"'
     if isinstance(node, e.Variable):
         return node.name.lexeme
     if isinstance(node, e.This):

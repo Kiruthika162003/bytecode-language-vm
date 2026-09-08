@@ -48,6 +48,7 @@ from ember.errors import (
     Unbound,
 )
 from ember.function import NativeFunction
+from ember.interpolation import TEXT as _TEXT
 from ember.tokenkind import TokenKind
 from ember.valueops import (
     is_truthy,
@@ -399,6 +400,14 @@ class TreeWalker:
             return self._binary(node, env)
         if isinstance(node, e.Logical):
             return self._logical(node, env)
+        if isinstance(node, e.Interpolation):
+            pieces: list[str] = []
+            for kind, value in node.parts:
+                if kind == _TEXT:
+                    pieces.append(value)
+                else:
+                    pieces.append(stringify(self._evaluate(value, env)))
+            return "".join(pieces)
         if isinstance(node, e.Conditional):
             if is_truthy(self._evaluate(node.condition, env)):
                 return self._evaluate(node.when_true, env)

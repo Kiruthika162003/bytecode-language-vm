@@ -293,6 +293,8 @@ class VM:
                     OpCode.SHIFT_RIGHT,
                 ):
                     self._bitwise(opcode)
+                elif opcode == OpCode.TO_STRING:
+                    self.stack.append(stringify(self._pop()))
                 elif opcode == OpCode.BIT_NOT:
                     value = self._pop()
                     self.stack.append(~_whole(value, "invert"))

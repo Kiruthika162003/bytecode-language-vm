@@ -281,6 +281,10 @@ class Analyzer:
                 )
             # a write is deliberately not a read, so a variable only ever written
             # is still reported as unused
+        elif isinstance(node, e.Interpolation):
+            for kind, value in node.parts:
+                if kind != "text":
+                    self._expression(value)
         elif isinstance(node, e.Unary):
             self._expression(node.operand)
         elif isinstance(node, (e.Binary, e.Logical)):
