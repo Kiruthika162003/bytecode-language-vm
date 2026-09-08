@@ -41,6 +41,12 @@ class Literal(Expr):
 
 
 @dataclass(frozen=True)
+class Interpolation(Expr):
+    token: Token
+    parts: tuple[tuple[str, object], ...]
+
+
+@dataclass(frozen=True)
 class Variable(Expr):
     name: Token
 

@@ -68,6 +68,7 @@ class TokenKind(Enum):
 
     IDENTIFIER = auto()
     STRING = auto()
+    INTERPOLATION = auto()
     NUMBER = auto()
 
     AND = auto()
@@ -102,6 +103,7 @@ class TokenKind(Enum):
     def is_literal(self) -> bool:
         return self in (
             TokenKind.STRING,
+            TokenKind.INTERPOLATION,
             TokenKind.NUMBER,
             TokenKind.TRUE,
             TokenKind.FALSE,

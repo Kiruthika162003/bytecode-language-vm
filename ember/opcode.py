@@ -83,6 +83,8 @@ class OpCode(IntEnum):
     GET_SUPER = 44
     ITER_PREPARE = 45
     ITER_SIZE = 46
+    TO_STRING = 56
+
     BIT_AND = 50
     BIT_OR = 51
     BIT_XOR = 52
@@ -154,6 +156,7 @@ OPERAND_BYTES: dict[OpCode, int] = {
     OpCode.BIT_AND: 0,
     OpCode.BIT_OR: 0,
     OpCode.BIT_XOR: 0,
+    OpCode.TO_STRING: 0,
     OpCode.BIT_NOT: 0,
     OpCode.SHIFT_LEFT: 0,
     OpCode.SHIFT_RIGHT: 0,

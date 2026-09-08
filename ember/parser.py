@@ -36,7 +36,9 @@ from __future__ import annotations
 from ember import exprnodes as e
 from ember import stmtnodes as s
 from ember.errors import Syntax
+from ember.interpolation import TEXT
 from ember.precedence import Precedence, infix_precedence
+from ember.scanner import scan
 from ember.token import Token
 from ember.tokenkind import TokenKind
 
@@ -500,6 +502,8 @@ class Parser:
         if self._match(TokenKind.NUMBER, TokenKind.STRING):
             token = self._previous()
             return e.Literal(token.literal, token)
+        if self._match(TokenKind.INTERPOLATION):
+            return self._interpolation(self._previous())
         if self._match(TokenKind.TRUE):
             return e.Literal(True, self._previous())
         if self._match(TokenKind.FALSE):
@@ -549,6 +553,20 @@ class Parser:
             at_end=at_end,
         )
 
+    def _interpolation(self, token: Token) -> e.Expr:
+        parts: list[tuple[str, object]] = []
+        for kind, text in token.literal:
+            if kind == TEXT:
+                parts.append((kind, text))
+                continue
+            if not text.strip():
+                raise Syntax(
+                    f"an interpolation on line {token.line} is empty; put an "
+                    "expression between the braces"
+                )
+            parts.append((kind, parse_expression(text, token.line)))
+        return e.Interpolation(token, tuple(parts))
+
     def _list_literal(self) -> e.Expr:
         bracket = self._previous()
         elements: list[e.Expr] = []
@@ -577,3 +595,22 @@ class Parser:
 
 def parse(tokens: list[Token]) -> list[s.Stmt]:
     return Parser(tokens).parse()
+
+
+def parse_expression(source: str, line: int = 1) -> e.Expr:
+    """Parse one expression from its own source, for an interpolation's contents.
+
+    The hole's text was set aside by the scanner rather than tokenized in place,
+    so it is scanned and parsed here as a small program of its own. Requiring the
+    whole fragment to be consumed is what catches a hole holding two expressions
+    or a stray token after one.
+    """
+    parser = Parser(scan(source))
+    parsed = parser._expression()
+    if not parser._at_end():
+        found = parser._peek()
+        raise Syntax(
+            f"the interpolation on line {line} has more than one expression in it, "
+            f"starting at {found.lexeme!r}"
+        )
+    return parsed

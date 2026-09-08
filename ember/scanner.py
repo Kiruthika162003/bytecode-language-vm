@@ -28,6 +28,8 @@ from __future__ import annotations
 
 from ember.cursor import Cursor
 from ember.errors import Syntax
+from ember.interpolation import TEXT, has_holes
+from ember.interpolation import split as split_interpolation
 from ember.keywords import kind_of
 from ember.numberparse import parse as parse_number
 from ember.sourcepos import Position, Span
@@ -167,11 +169,43 @@ class Scanner:
         )
 
     def _scan_string(self, start: Position) -> Token | None:
-        while not self._cursor.at_end() and self._cursor.peek() != '"':
-            if self._cursor.peek() == "\\":
+        # The scan is aware of interpolation holes, because a quote inside a hole
+        # belongs to a string of its own and must not end the outer one. Without
+        # that, an expression as ordinary as a map lookup by a string key could
+        # never appear in a hole, which would make the feature far less useful
+        # than it looks.
+        depth = 0
+        while not self._cursor.at_end():
+            char = self._cursor.peek()
+            if char == chr(92):
                 self._cursor.advance()
-            if not self._cursor.at_end():
+                if not self._cursor.at_end():
+                    self._cursor.advance()
+                continue
+            if depth == 0 and char == '"':
+                break
+            if char == "$" and self._cursor.peek(1) == "{":
                 self._cursor.advance()
+                self._cursor.advance()
+                depth += 1
+                continue
+            if depth > 0:
+                if char == "{":
+                    depth += 1
+                elif char == "}":
+                    depth -= 1
+                elif char == '"':
+                    if not self._skip_nested_string():
+                        return self._error(
+                            start,
+                            "a string inside an interpolation was opened but never "
+                            "closed; add a closing quote",
+                            at_end=True,
+                        )
+                    continue
+                self._cursor.advance()
+                continue
+            self._cursor.advance()
         if self._cursor.at_end():
             return self._error(
                 start,
@@ -181,8 +215,28 @@ class Scanner:
         self._cursor.advance()
         raw = self._span(start).text(self._cursor.source)
         body = raw[1:-1]
-        value = decode_escapes(body)
-        return self._make(TokenKind.STRING, start, value)
+        if has_holes(body):
+            # the pieces are carried on the token; turning each expression source
+            # into a tree is the parser's job, not the scanner's
+            pieces = [
+                (kind, decode_escapes(text) if kind == TEXT else text)
+                for kind, text in split_interpolation(body)
+            ]
+            return self._make(TokenKind.INTERPOLATION, start, tuple(pieces))
+        return self._make(TokenKind.STRING, start, decode_escapes(body))
+
+    def _skip_nested_string(self) -> bool:
+        """Step over a string written inside an interpolation hole."""
+        self._cursor.advance()
+        while not self._cursor.at_end() and self._cursor.peek() != '"':
+            if self._cursor.peek() == chr(92):
+                self._cursor.advance()
+            if not self._cursor.at_end():
+                self._cursor.advance()
+        if self._cursor.at_end():
+            return False
+        self._cursor.advance()
+        return True
 
     def _scan_number(self, start: Position) -> Token:
         while _is_alnum(self._cursor.peek()) or self._cursor.peek() == ".":
