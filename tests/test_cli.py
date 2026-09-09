@@ -15,7 +15,7 @@ class TestTraceCommands:
         code = main(["traces"])
         captured = capsys.readouterr()
         assert code == 0
-        assert "20 traces, 0 broken" in captured.out
+        assert "21 traces, 0 broken" in captured.out
         assert "[holds] fold:" in captured.out
 
     def test_check_reports_that_all_hold(self, capsys):
@@ -26,7 +26,7 @@ class TestTraceCommands:
     def test_summary_counts_the_traces(self, capsys):
         code = main(["summary"])
         assert code == 0
-        assert "20 traces (0 broken)" in capsys.readouterr().out
+        assert "21 traces (0 broken)" in capsys.readouterr().out
 
 
 class TestEval:
