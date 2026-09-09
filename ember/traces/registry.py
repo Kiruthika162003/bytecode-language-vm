@@ -34,6 +34,7 @@ from ember.traces import (
     sharedtrace,
     slottrace,
     unwindtrace,
+    verifytrace,
 )
 from ember.traces.finding import Finding
 
@@ -55,6 +56,7 @@ TRACES: tuple[Callable[[], Finding], ...] = (
     formattrace.run,
     lintquiettrace.run,
     agreetrace.run,
+    verifytrace.run,
 )
 
 
