@@ -19,6 +19,7 @@ from collections.abc import Callable
 from ember.traces import (
     agreetrace,
     aritytrace,
+    assemblytrace,
     blocktrace,
     closuretrace,
     costtrace,
@@ -65,6 +66,7 @@ TRACES: tuple[Callable[[], Finding], ...] = (
     typetrace.run,
     patterntrace.run,
     blocktrace.run,
+    assemblytrace.run,
 )
 
 

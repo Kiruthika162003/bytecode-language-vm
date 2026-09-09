@@ -38,6 +38,7 @@ _USAGE = """usage: python -m ember.cli <command> [argument]
   docs <file>         print a reference of what the program declares
   types <file>        report the definite type mistakes a program contains
   step <file>         show what the machine did, instruction by instruction
+  assemble <file>     print the bytecode as assembly text that reads back
   repl                start an interactive session
   traces              print every recorded claim and whether it holds
   check               report whether any trace is broken
@@ -96,6 +97,26 @@ def _format(source: str) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(format_program(statements), end="")
+    return 0
+
+
+def _assemble(source: str) -> int:
+    from ember.assembly import from_assembly, to_assembly
+    from ember.errors import EmberError
+    from ember.interpreter import build
+
+    try:
+        function = build(source)
+        text = to_assembly(function)
+    except EmberError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    print(text)
+    # the listing is only worth printing if it reads back, so that is checked here
+    rebuilt = from_assembly(text)
+    if list(rebuilt.chunk.code) != list(function.chunk.code):
+        print("this listing does not read back to the same bytecode", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -341,6 +362,7 @@ def main(argv: list[str] | None = None) -> int:
         "docs",
         "types",
         "step",
+        "assemble",
     ):
         if not rest:
             print(f"{command} needs an argument", file=sys.stderr)
@@ -371,6 +393,8 @@ def main(argv: list[str] | None = None) -> int:
             return _types(source)
         if command == "step":
             return _step(source)
+        if command == "assemble":
+            return _assemble(source)
         return _disassemble(source, optimize=command == "optimized")
     print(f"unknown command {command!r}\n\n{_USAGE}", file=sys.stderr)
     return 2

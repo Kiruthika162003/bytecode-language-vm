@@ -15,7 +15,7 @@ class TestTraceCommands:
         code = main(["traces"])
         captured = capsys.readouterr()
         assert code == 0
-        assert "22 traces, 0 broken" in captured.out
+        assert "23 traces, 0 broken" in captured.out
         assert "[holds] fold:" in captured.out
 
     def test_check_reports_that_all_hold(self, capsys):
@@ -26,7 +26,7 @@ class TestTraceCommands:
     def test_summary_counts_the_traces(self, capsys):
         code = main(["summary"])
         assert code == 0
-        assert "22 traces (0 broken)" in capsys.readouterr().out
+        assert "23 traces (0 broken)" in capsys.readouterr().out
 
 
 class TestEval:
@@ -394,6 +394,39 @@ class TestStepCommand:
     def test_the_usage_mentions_it(self, capsys):
         main([])
         assert "step <file>" in capsys.readouterr().err
+
+
+class TestAssembleCommand:
+    def test_the_listing_is_printed(self, capsys, tmp_path):
+        path = tmp_path / "plain.ember"
+        path.write_text("print 1 + 2;", encoding="utf-8")
+        code = main(["assemble", str(path)])
+        captured = capsys.readouterr()
+        assert code == 0
+        assert ".function f0" in captured.out
+        assert "ADD" in captured.out
+
+    def test_a_nested_function_gets_a_section(self, capsys, tmp_path):
+        path = tmp_path / "fn.ember"
+        path.write_text("fn add(a, b) { return a + b; } print add(1, 2);", encoding="utf-8")
+        main(["assemble", str(path)])
+        captured = capsys.readouterr()
+        assert ".function f1" in captured.out
+        assert chr(34) + "add" + chr(34) in captured.out
+
+    def test_a_syntax_fault_is_reported(self, capsys, tmp_path):
+        path = tmp_path / "bad.ember"
+        path.write_text("let x = ;", encoding="utf-8")
+        assert main(["assemble", str(path)]) == 1
+        assert "error:" in capsys.readouterr().err
+
+    def test_assemble_needs_an_argument(self, capsys):
+        assert main(["assemble"]) == 2
+        assert "needs an argument" in capsys.readouterr().err
+
+    def test_the_usage_mentions_it(self, capsys):
+        main([])
+        assert "assemble <file>" in capsys.readouterr().err
 
 
 class TestRepl:
