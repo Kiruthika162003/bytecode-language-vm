@@ -35,6 +35,7 @@ from ember.difflib import diff_names, install_diff_library
 from ember.encodelib import encode_names, install_encode_library
 from ember.errors import Arithmetic, IndexRange, TypeMismatch
 from ember.fraclib import fraction_names, install_fraction_library
+from ember.hashlib import hash_names, install_hash_library
 from ember.heaplib import heap_names, install_heap_library
 from ember.higherorder import higher_order_names, install_higher_order
 from ember.jsonlib import install_json_library, json_names
@@ -251,6 +252,7 @@ def install_builtins(machine: VM) -> None:
     install_diff_library(machine)
     install_schema_library(machine)
     install_queue_library(machine)
+    install_hash_library(machine)
 
 
 def builtin_names() -> list[str]:
@@ -264,4 +266,5 @@ def builtin_names() -> list[str]:
     names |= set(matrix_names()) | set(regex_names())
     names |= set(encode_names()) | set(diff_names())
     names |= set(schema_names()) | set(queue_names())
+    names |= set(hash_names())
     return sorted(names)
