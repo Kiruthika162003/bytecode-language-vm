@@ -277,6 +277,45 @@ class TestCoverageCommand:
         assert "coverage <file>" in capsys.readouterr().err
 
 
+class TestDocsCommand:
+    def test_a_reference_is_printed(self, capsys, tmp_path):
+        path = tmp_path / "lib.ember"
+        path.write_text(
+            "// Add two numbers."
+            + chr(10)
+            + "fn add(a, b) { return a + b; }"
+            + chr(10),
+            encoding="utf-8",
+        )
+        code = main(["docs", str(path)])
+        captured = capsys.readouterr()
+        assert code == 0
+        assert "add(a, b)" in captured.out
+        assert "Add two numbers." in captured.out
+
+    def test_the_documented_share_is_reported(self, capsys, tmp_path):
+        path = tmp_path / "lib.ember"
+        path.write_text("fn bare() { return 1; }", encoding="utf-8")
+        main(["docs", str(path)])
+        assert "0 percent" in capsys.readouterr().out
+
+    def test_a_program_declaring_nothing_says_so(self, capsys, tmp_path):
+        path = tmp_path / "plain.ember"
+        path.write_text("print 1;", encoding="utf-8")
+        assert main(["docs", str(path)]) == 0
+        assert "declares nothing" in capsys.readouterr().out
+
+    def test_a_syntax_fault_is_reported(self, capsys, tmp_path):
+        path = tmp_path / "bad.ember"
+        path.write_text("let x = ;", encoding="utf-8")
+        assert main(["docs", str(path)]) == 1
+        assert "error:" in capsys.readouterr().err
+
+    def test_the_usage_mentions_it(self, capsys):
+        main([])
+        assert "docs <file>" in capsys.readouterr().err
+
+
 class TestRepl:
     def test_it_evaluates_lines_and_ends_on_end_of_input(self, capsys, monkeypatch):
         lines = iter(["1 + 2;", "fn dbl(x) { return x * 2; }", "dbl(4);"])

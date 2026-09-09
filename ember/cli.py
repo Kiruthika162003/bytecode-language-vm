@@ -35,6 +35,7 @@ _USAGE = """usage: python -m ember.cli <command> [argument]
   verify <file>       check the emitted bytecode is well formed
   test <file>         run the program's test functions and report which held
   coverage <file>     run the program and report which lines never ran
+  docs <file>         print a reference of what the program declares
   repl                start an interactive session
   traces              print every recorded claim and whether it holds
   check               report whether any trace is broken
@@ -93,6 +94,24 @@ def _format(source: str) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(format_program(statements), end="")
+    return 0
+
+
+def _docs(source: str) -> int:
+    from ember.docgen import coverage_of, render
+    from ember.errors import EmberError
+
+    try:
+        text = render(source)
+    except EmberError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    if not text:
+        print("this program declares nothing at its top level")
+        return 0
+    print(text)
+    print()
+    print(f"{coverage_of(source)} percent of the declarations carry a comment")
     return 0
 
 
@@ -282,6 +301,7 @@ def main(argv: list[str] | None = None) -> int:
         "verify",
         "test",
         "coverage",
+        "docs",
     ):
         if not rest:
             print(f"{command} needs an argument", file=sys.stderr)
@@ -306,6 +326,8 @@ def main(argv: list[str] | None = None) -> int:
             return _test(source)
         if command == "coverage":
             return _coverage(source)
+        if command == "docs":
+            return _docs(source)
         return _disassemble(source, optimize=command == "optimized")
     print(f"unknown command {command!r}\n\n{_USAGE}", file=sys.stderr)
     return 2
