@@ -32,6 +32,7 @@ _USAGE = """usage: python -m ember.cli <command> [argument]
   profile <file>      run a program and report where the work went
   format <file>       print the program in one canonical layout
   lint <file>         report what compiles but a reader would question
+  verify <file>       check the emitted bytecode is well formed
   repl                start an interactive session
   traces              print every recorded claim and whether it holds
   check               report whether any trace is broken
@@ -91,6 +92,30 @@ def _format(source: str) -> int:
         return 1
     print(format_program(statements), end="")
     return 0
+
+
+def _verify(source: str) -> int:
+    from ember.errors import EmberError
+    from ember.interpreter import build
+    from ember.verifier import faults_deeply, verify_deeply
+
+    try:
+        function = build(source)
+    except EmberError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    found = verify_deeply(function)
+    if not found:
+        print("the bytecode is well formed")
+        return 0
+    for problem in found:
+        print(problem.render())
+    print()
+    bad = len(faults_deeply(function))
+    noun = "problem" if len(found) == 1 else "problems"
+    print(f"{len(found)} {noun}, {bad} of them faults")
+    # only a fault means the machine would misbehave, so only a fault fails
+    return 1 if bad else 0
 
 
 def _lint(source: str) -> int:
@@ -222,6 +247,7 @@ def main(argv: list[str] | None = None) -> int:
         "profile",
         "format",
         "lint",
+        "verify",
     ):
         if not rest:
             print(f"{command} needs an argument", file=sys.stderr)
@@ -240,6 +266,8 @@ def main(argv: list[str] | None = None) -> int:
             return _format(source)
         if command == "lint":
             return _lint(source)
+        if command == "verify":
+            return _verify(source)
         return _disassemble(source, optimize=command == "optimized")
     print(f"unknown command {command!r}\n\n{_USAGE}", file=sys.stderr)
     return 2

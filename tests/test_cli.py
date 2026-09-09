@@ -15,7 +15,7 @@ class TestTraceCommands:
         code = main(["traces"])
         captured = capsys.readouterr()
         assert code == 0
-        assert "17 traces, 0 broken" in captured.out
+        assert "18 traces, 0 broken" in captured.out
         assert "[holds] fold:" in captured.out
 
     def test_check_reports_that_all_hold(self, capsys):
@@ -26,7 +26,7 @@ class TestTraceCommands:
     def test_summary_counts_the_traces(self, capsys):
         code = main(["summary"])
         assert code == 0
-        assert "17 traces (0 broken)" in capsys.readouterr().out
+        assert "18 traces (0 broken)" in capsys.readouterr().out
 
 
 class TestEval:
@@ -149,6 +149,49 @@ class TestLint:
         path.write_text("let x = ;", encoding="utf-8")
         assert main(["lint", str(path)]) == 1
         assert "error:" in capsys.readouterr().err
+
+
+class TestVerify:
+    def test_well_formed_bytecode_says_so(self, capsys, tmp_path):
+        path = tmp_path / "plain.ember"
+        path.write_text("print 1 + 2;", encoding="utf-8")
+        code = main(["verify", str(path)])
+        assert code == 0
+        assert "well formed" in capsys.readouterr().out
+
+    def test_a_dead_epilogue_is_reported_without_failing(self, capsys, tmp_path):
+        path = tmp_path / "returns.ember"
+        path.write_text("fn f() { return 1; } print f();", encoding="utf-8")
+        code = main(["verify", str(path)])
+        captured = capsys.readouterr()
+        # a warning is not a fault, so the status stays zero
+        assert code == 0
+        assert "unreachable-code" in captured.out
+        assert "0 of them faults" in captured.out
+
+    def test_the_count_reads_as_a_sentence(self, capsys, tmp_path):
+        path = tmp_path / "returns.ember"
+        path.write_text("fn f() { return 1; } print f();", encoding="utf-8")
+        main(["verify", str(path)])
+        assert "1 problem," in capsys.readouterr().out
+
+    def test_a_syntax_fault_is_reported(self, capsys, tmp_path):
+        path = tmp_path / "bad.ember"
+        path.write_text("let x = ;", encoding="utf-8")
+        assert main(["verify", str(path)]) == 1
+        assert "error:" in capsys.readouterr().err
+
+    def test_verify_needs_an_argument(self, capsys):
+        assert main(["verify"]) == 2
+        assert "needs an argument" in capsys.readouterr().err
+
+    def test_a_missing_file_is_refused(self, capsys, tmp_path):
+        assert main(["verify", str(tmp_path / "nowhere.ember")]) == 2
+        assert "there is no file" in capsys.readouterr().err
+
+    def test_the_usage_mentions_it(self, capsys):
+        main([])
+        assert "verify <file>" in capsys.readouterr().err
 
 
 class TestRepl:
