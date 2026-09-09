@@ -23,6 +23,7 @@ stage produced it.
 
 from __future__ import annotations
 
+from ember.blockopt import optimise_deeply
 from ember.builtins import install_builtins
 from ember.compiler import compile_program
 from ember.function import Function
@@ -39,16 +40,19 @@ def build(
     source: str,
     optimize: bool = False,
     peephole: bool = False,
+    blocks: bool = False,
     path: str | None = None,
 ) -> Function:
-    """Compile source, optionally through the tree passes and the bytecode pass.
+    """Compile source, optionally through each of the three optimisers.
 
-    The two optimizers are separate flags rather than one, because they work at
+    The optimisers are separate flags rather than one, because they work at
     different altitudes and each is worth being able to measure alone: the tree
-    passes fold and prune what the program says, the peephole pass rewrites what
-    the compiler emitted. Passing a path turns imports on, since an import names a
-    file relative to the one importing it and a fragment with no path has no
-    neighbours to name.
+    passes fold and prune what the program says, the peephole pass rewrites
+    neighbouring instructions, and the block pass needs the whole control flow
+    graph to remove what no path reaches. They run in that order, from the
+    highest altitude to the lowest, so each sees what the one before left.
+    Passing a path turns imports on, since an import names a file relative to the
+    one importing it and a fragment with no path has no neighbours to name.
     """
     statements = load_program(source, path) if path is not None else parse(scan(source))
     if optimize:
@@ -56,6 +60,8 @@ def build(
     function = compile_program(statements)
     if peephole:
         optimize_function(function)
+    if blocks:
+        optimise_deeply(function)
     return function
 
 
@@ -64,9 +70,12 @@ def run(
     with_builtins: bool = True,
     optimize: bool = False,
     peephole: bool = False,
+    blocks: bool = False,
     path: str | None = None,
 ) -> VM:
-    function = build(source, optimize=optimize, peephole=peephole, path=path)
+    function = build(
+        source, optimize=optimize, peephole=peephole, blocks=blocks, path=path
+    )
     machine = VM()
     if with_builtins:
         install_builtins(machine)
@@ -79,6 +88,7 @@ def run_output(
     with_builtins: bool = True,
     optimize: bool = False,
     peephole: bool = False,
+    blocks: bool = False,
     path: str | None = None,
 ) -> list[str]:
     return run(
@@ -86,6 +96,7 @@ def run_output(
         with_builtins=with_builtins,
         optimize=optimize,
         peephole=peephole,
+        blocks=blocks,
         path=path,
     ).output
 

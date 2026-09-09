@@ -1,11 +1,12 @@
 """Differential testing: run the same program five ways and insist on one answer.
 
-Two backends and two optimisers give five ways to execute a program, and every one
+Two backends and three optimisers give six ways to execute a program, and every one
 of them is supposed to produce identical output. The compiled machine unoptimised,
-the compiled machine after tree folding, after the bytecode peephole pass, after
-both, and the tree walking interpreter that shares no execution code with any of
-them. When these disagree the language is wrong somewhere, and which pair disagrees
-narrows down where: a difference between the walker and every compiled form points
+the compiled machine after tree folding, after the bytecode peephole pass, after the
+block pass, after all three together, and the tree walking interpreter, which shares
+no execution code with any of them. When these disagree the language is wrong
+somewhere, and which pair disagrees narrows down where: a difference between the
+walker and every compiled form points
 at the compiler or the machine, while a difference that appears only under one
 optimiser points at that optimiser, because the unoptimised form is the definition
 of what the program means.
@@ -20,11 +21,11 @@ difference in the last digit would mean one of them reordered an operation, whic
 a bug worth hearing about rather than a rounding artifact to tolerate.
 
 A refusal counts as a result too, which is the subtlety here. If one configuration
-faults and another prints a value, that is a disagreement, and if all five refuse
+faults and another prints a value, that is a disagreement, and if all of them refuse
 then the program is simply invalid and proves nothing about the backends. So a
 faulted run records the error's text as its outcome and comparison proceeds
 normally, which turns the differential test into a check on the error paths as well:
-the five configurations must agree about what fails, not only about what succeeds.
+every configuration must agree about what fails, not only about what succeeds.
 
 The first campaign of eleven hundred generated programs found nothing, and a test
 that finds nothing is indistinguishable from a test that cannot find anything, so
@@ -54,8 +55,9 @@ PLAIN = "compiled"
 FOLDED = "compiled+folded"
 PEEPED = "compiled+peephole"
 BOTH = "compiled+both"
+BLOCKED = "compiled+blocks"
 
-CONFIGURATIONS = (WALKED, PLAIN, FOLDED, PEEPED, BOTH)
+CONFIGURATIONS = (WALKED, PLAIN, FOLDED, PEEPED, BLOCKED, BOTH)
 
 
 @dataclass
@@ -71,7 +73,7 @@ class Outcome:
         return self.refusal is not None
 
     def comparable(self) -> tuple[str, ...]:
-        # a refusal compares as its message, so the five must agree about failure too
+        # a refusal compares as its message, so they must agree about failure too
         if self.refusal is not None:
             return ("refused", self.refusal)
         return ("printed", *self.output)
@@ -103,7 +105,7 @@ class Disagreement:
         alone = [listed[0] for listed in grouped.values() if len(listed) == 1]
         if alone == [WALKED]:
             return "the compiler or the machine, since only the walker differs"
-        if alone in ([FOLDED], [PEEPED]):
+        if alone in ([FOLDED], [PEEPED], [BLOCKED]):
             return f"the {alone[0]} pass, since only it differs"
         if WALKED in labels and len(grouped) == 2:
             return "one side of the divide between walking and compiling"
@@ -128,8 +130,12 @@ def _run_one(source: str, label: str) -> Outcome:
             printed = interpreter.run_output(source, optimize=True)
         elif label == PEEPED:
             printed = interpreter.run_output(source, peephole=True)
+        elif label == BLOCKED:
+            printed = interpreter.run_output(source, blocks=True)
         else:
-            printed = interpreter.run_output(source, optimize=True, peephole=True)
+            printed = interpreter.run_output(
+                source, optimize=True, peephole=True, blocks=True
+            )
     except EmberError as refused:
         return Outcome(label=label, refusal=str(refused))
     return Outcome(label=label, output=list(printed))

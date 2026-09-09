@@ -4,6 +4,7 @@ import pytest
 
 from ember import interpreter
 from ember.differential import (
+    BLOCKED,
     BOTH,
     CONFIGURATIONS,
     FOLDED,
@@ -48,9 +49,12 @@ class TestOutcomes:
 
 
 class TestAgreement:
-    def test_all_five_configurations_are_tried(self):
+    def test_every_configuration_is_tried(self):
         assert len(outcomes_for("print 1;")) == len(CONFIGURATIONS)
-        assert len(CONFIGURATIONS) == 5
+        assert len(CONFIGURATIONS) == 6
+
+    def test_the_block_pass_is_one_of_them(self):
+        assert BLOCKED in CONFIGURATIONS
 
     def test_a_simple_program_agrees(self):
         assert compare("print 1 + 2 * 3;") is None
@@ -196,6 +200,7 @@ class TestDisagreementReports:
                 Outcome(label=PLAIN, output=["1"]),
                 Outcome(label=FOLDED, output=["1"]),
                 Outcome(label=PEEPED, output=["1"]),
+                Outcome(label=BLOCKED, output=["1"]),
                 Outcome(label=BOTH, output=["1"]),
             ],
         )
@@ -203,7 +208,7 @@ class TestDisagreementReports:
     def test_the_groups_gather_the_configurations_that_matched(self):
         grouped = self._split().groups()
         assert len(grouped) == 2
-        assert sorted(len(listed) for listed in grouped.values()) == [1, 4]
+        assert sorted(len(listed) for listed in grouped.values()) == [1, 5]
 
     def test_a_lone_walker_points_at_the_compiler(self):
         assert "compiler or the machine" in self._split().suspect()
@@ -226,6 +231,7 @@ class TestDisagreementReports:
                 Outcome(label=PLAIN, output=["2"]),
                 Outcome(label=FOLDED, output=["3"]),
                 Outcome(label=PEEPED, output=["4"]),
+                Outcome(label=BLOCKED, output=["6"]),
                 Outcome(label=BOTH, output=["5"]),
             ],
         )
@@ -239,6 +245,7 @@ class TestDisagreementReports:
                 Outcome(label=PLAIN, output=["2"]),
                 Outcome(label=FOLDED, output=["2"]),
                 Outcome(label=PEEPED, output=["2"]),
+                Outcome(label=BLOCKED, output=["2"]),
                 Outcome(label=BOTH, output=["2"]),
             ],
         )
