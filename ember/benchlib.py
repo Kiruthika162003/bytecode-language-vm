@@ -22,9 +22,12 @@ wall clock time needs a clock and the caveats that come with one.
 The comparison is the part worth having. Two programs computing the same answer can be measured
 against each other, and the report gives the ratio as well as the counts, since a difference of
 four hundred instructions means nothing without knowing whether the total was five hundred or
-five million. Each measured program is also run for its output, and a comparison whose two sides
-print different things is reported as such rather than compared: two programs that do not agree
-are not two ways of doing one thing, and calling one of them faster would be meaningless.
+five million. Each measured program is also run for its output, and a comparison whose two
+sides print different things is reported as such rather than compared: two programs that do
+not agree are not two ways of doing one thing, and calling one of them faster would be
+meaningless. A program that faults partway through is measured up to the fault, which is a
+real count of real work, while a program that does not compile is not measured at all,
+because nothing ran.
 """
 
 from __future__ import annotations
@@ -61,12 +64,19 @@ class Measurement:
 
 
 def measure(source: str, label: str = "program", **options) -> Measurement:
-    """Run a program once and count what the machine dispatched."""
+    """Run a program once and count what the machine dispatched.
+
+    Compiling happens before the counting begins, so a program that does not compile
+    reaches the caller as a fault rather than as a measurement of zero: there is no
+    program to have measured, and reporting one that refused after no instructions
+    would read as though it had run.
+    """
+    function = build(source, **options)
     machine = VM()
     install_builtins(machine)
     refusal: str | None = None
     try:
-        machine.interpret(build(source, **options))
+        machine.interpret(function)
     except EmberError as faulted:
         refusal = str(faulted)
     return Measurement(

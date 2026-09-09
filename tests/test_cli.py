@@ -429,6 +429,108 @@ class TestAssembleCommand:
         assert "assemble <file>" in capsys.readouterr().err
 
 
+class TestGraphCommand:
+    def test_the_graph_is_printed(self, capsys, tmp_path):
+        path = tmp_path / "loop.ember"
+        path.write_text("let n = 0; while (n < 3) { n = n + 1; }", encoding="utf-8")
+        code = main(["graph", str(path)])
+        captured = capsys.readouterr()
+        assert code == 0
+        assert "digraph program" in captured.out
+
+    def test_the_plain_listing_is_printed_too(self, capsys, tmp_path):
+        path = tmp_path / "loop.ember"
+        path.write_text("let n = 0; while (n < 3) { n = n + 1; }", encoding="utf-8")
+        main(["graph", str(path)])
+        captured = capsys.readouterr()
+        assert "the same graph in words:" in captured.out
+        assert "goes to" in captured.out
+
+    def test_a_loop_header_is_named(self, capsys, tmp_path):
+        path = tmp_path / "loop.ember"
+        path.write_text("let n = 0; while (n < 3) { n = n + 1; }", encoding="utf-8")
+        main(["graph", str(path)])
+        assert "loop header" in capsys.readouterr().out
+
+    def test_a_syntax_fault_is_reported(self, capsys, tmp_path):
+        path = tmp_path / "bad.ember"
+        path.write_text("let x = ;", encoding="utf-8")
+        assert main(["graph", str(path)]) == 1
+        assert "error:" in capsys.readouterr().err
+
+    def test_the_usage_mentions_it(self, capsys):
+        main([])
+        assert "graph <file>" in capsys.readouterr().err
+
+
+class TestBenchCommand:
+    def test_the_settings_are_counted(self, capsys, tmp_path):
+        path = tmp_path / "sums.ember"
+        path.write_text("print 1 + 2 * 3 - 4;", encoding="utf-8")
+        code = main(["bench", str(path)])
+        captured = capsys.readouterr()
+        assert code == 0
+        assert "instructions" in captured.out
+        assert "plain" in captured.out
+
+    def test_the_cheapest_setting_is_named(self, capsys, tmp_path):
+        path = tmp_path / "sums.ember"
+        path.write_text("print 1 + 2 * 3 - 4;", encoding="utf-8")
+        main(["bench", str(path)])
+        assert "the cheapest setting is" in capsys.readouterr().out
+
+    def test_a_faulting_program_is_still_counted(self, capsys, tmp_path):
+        # a count is a measurement, not a verdict
+        path = tmp_path / "bad.ember"
+        path.write_text("print 1 / 0;", encoding="utf-8")
+        assert main(["bench", str(path)]) == 0
+        assert "refused" in capsys.readouterr().out
+
+    def test_a_syntax_fault_is_reported(self, capsys, tmp_path):
+        path = tmp_path / "bad.ember"
+        path.write_text("let x = ;", encoding="utf-8")
+        assert main(["bench", str(path)]) == 1
+        assert "error:" in capsys.readouterr().err
+
+    def test_the_usage_mentions_it(self, capsys):
+        main([])
+        assert "bench <file>" in capsys.readouterr().err
+
+
+class TestHoldsCommand:
+    def test_what_is_reachable_is_counted(self, capsys, tmp_path):
+        path = tmp_path / "held.ember"
+        path.write_text("let a = [1, 2, 3];", encoding="utf-8")
+        code = main(["holds", str(path)])
+        captured = capsys.readouterr()
+        assert code == 0
+        assert "values reachable from" in captured.out
+
+    def test_the_largest_holders_are_named(self, capsys, tmp_path):
+        path = tmp_path / "held.ember"
+        source = "let big = [];" + chr(10)
+        source += "for (let i = 0; i < 100; i = i + 1) { big = push(big, i); }"
+        path.write_text(source, encoding="utf-8")
+        main(["holds", str(path)])
+        captured = capsys.readouterr()
+        assert "the names holding the most:" in captured.out
+        assert "big leads to" in captured.out
+
+    def test_a_syntax_fault_is_reported(self, capsys, tmp_path):
+        path = tmp_path / "bad.ember"
+        path.write_text("let x = ;", encoding="utf-8")
+        assert main(["holds", str(path)]) == 1
+        assert "error:" in capsys.readouterr().err
+
+    def test_holds_needs_an_argument(self, capsys):
+        assert main(["holds"]) == 2
+        assert "needs an argument" in capsys.readouterr().err
+
+    def test_the_usage_mentions_it(self, capsys):
+        main([])
+        assert "holds <file>" in capsys.readouterr().err
+
+
 class TestRepl:
     def test_it_evaluates_lines_and_ends_on_end_of_input(self, capsys, monkeypatch):
         lines = iter(["1 + 2;", "fn dbl(x) { return x * 2; }", "dbl(4);"])

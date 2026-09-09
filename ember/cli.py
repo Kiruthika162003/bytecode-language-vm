@@ -39,6 +39,9 @@ _USAGE = """usage: python -m ember.cli <command> [argument]
   types <file>        report the definite type mistakes a program contains
   step <file>         show what the machine did, instruction by instruction
   assemble <file>     print the bytecode as assembly text that reads back
+  graph <file>        print the control flow graph a drawing tool can read
+  bench <file>        count the instructions the program dispatches
+  holds <file>        report what the program is still holding when it ends
   repl                start an interactive session
   traces              print every recorded claim and whether it holds
   check               report whether any trace is broken
@@ -97,6 +100,69 @@ def _format(source: str) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(format_program(statements), end="")
+    return 0
+
+
+def _graph(source: str) -> int:
+    from ember.cfg import graph_of
+    from ember.dotgraph import program_to_dot, summary_of
+    from ember.errors import EmberError
+    from ember.interpreter import build
+
+    try:
+        function = build(source)
+    except EmberError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    print(program_to_dot(function))
+    print()
+    # the plain listing too, for a reader with no drawing tool to hand
+    print("the same graph in words:")
+    for line in summary_of(graph_of(function)):
+        print("  " + line)
+    return 0
+
+
+def _bench(source: str) -> int:
+    from ember.benchlib import optimiser_effect
+    from ember.errors import EmberError
+
+    try:
+        found = optimiser_effect(source)
+    except EmberError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    for line in found.render():
+        print(line)
+    cheapest = found.cheapest()
+    if cheapest is not None:
+        print()
+        print(f"the cheapest setting is {cheapest.label}")
+    # a count is a measurement, not a verdict, so this always succeeds
+    return 0
+
+
+def _holds(source: str) -> int:
+    from ember.builtins import install_builtins
+    from ember.errors import EmberError
+    from ember.interpreter import build
+    from ember.reachability import after_running, largest_holders
+    from ember.vm import VM
+
+    try:
+        report = after_running(source)
+    except EmberError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    for line in report.render():
+        print(line)
+    machine = VM()
+    install_builtins(machine)
+    machine.interpret(build(source))
+    print()
+    print("the names holding the most:")
+    for name, size in largest_holders(machine, 5):
+        print(f"  {name} leads to {size} values")
     return 0
 
 
@@ -363,6 +429,9 @@ def main(argv: list[str] | None = None) -> int:
         "types",
         "step",
         "assemble",
+        "graph",
+        "bench",
+        "holds",
     ):
         if not rest:
             print(f"{command} needs an argument", file=sys.stderr)
@@ -395,6 +464,12 @@ def main(argv: list[str] | None = None) -> int:
             return _step(source)
         if command == "assemble":
             return _assemble(source)
+        if command == "graph":
+            return _graph(source)
+        if command == "bench":
+            return _bench(source)
+        if command == "holds":
+            return _holds(source)
         return _disassemble(source, optimize=command == "optimized")
     print(f"unknown command {command!r}\n\n{_USAGE}", file=sys.stderr)
     return 2
