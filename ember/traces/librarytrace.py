@@ -12,12 +12,12 @@ collisions: the text library had redefined repeating a string and splitting one 
 lines, and the core string library already provided both. The two versions of splitting
 into lines did not agree about a carriage return before a newline, so adding the text
 library had quietly changed how programs split text written on another system, and every
-test of both libraries passed throughout. That is precisely the kind of fault a trace is for: nothing failed, and something was
-wrong.
+test of both libraries passed throughout. That is precisely the kind of fault a trace is
+for: nothing failed, and something was wrong.
 
-So this trace holds when three counts are as they should be. No name is claimed by two libraries.
-Every name a library registers is a name the machine has. And the total is the sum of the
-libraries, which catches a library listed in the reference but silently empty. The numbers are
+So this trace holds when three counts are as they should be. No name is claimed by two
+libraries. Every name a library registers is a name the machine has. And the total is the
+sum of the libraries, which catches a library listed in the reference but silently empty. The numbers are
 reported rather than only checked, because the size of the library is itself worth knowing and
 nobody has counted it by hand since it was small.
 """
