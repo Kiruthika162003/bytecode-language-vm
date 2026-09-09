@@ -46,6 +46,7 @@ from ember.listlib import install_list_library, list_names
 from ember.maplib import install_map_library, map_names
 from ember.mathlib import install_math_library, math_names
 from ember.matrixlib import install_matrix_library, matrix_names
+from ember.prettylib import install_pretty_library, pretty_names
 from ember.queuelib import install_queue_library, queue_names
 from ember.randomlib import install_random_library, random_names
 from ember.regexlib import install_regex_library, regex_names
@@ -261,6 +262,7 @@ def install_builtins(machine: VM) -> None:
     install_chart_library(machine)
     install_interval_library(machine)
     install_state_library(machine)
+    install_pretty_library(machine)
 
 
 def builtin_names() -> list[str]:
@@ -276,5 +278,5 @@ def builtin_names() -> list[str]:
     names |= set(schema_names()) | set(queue_names())
     names |= set(hash_names()) | set(geometry_names())
     names |= set(chart_names()) | set(interval_names())
-    names |= set(state_names())
+    names |= set(state_names()) | set(pretty_names())
     return sorted(names)
