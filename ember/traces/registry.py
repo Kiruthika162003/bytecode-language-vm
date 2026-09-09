@@ -28,6 +28,7 @@ from ember.traces import (
     fuzztrace,
     inherittrace,
     iterationtrace,
+    librarytrace,
     lintquiettrace,
     patterntrace,
     peepholetrace,
@@ -67,6 +68,7 @@ TRACES: tuple[Callable[[], Finding], ...] = (
     patterntrace.run,
     blocktrace.run,
     assemblytrace.run,
+    librarytrace.run,
 )
 
 

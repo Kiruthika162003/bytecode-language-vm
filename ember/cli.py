@@ -46,6 +46,7 @@ _USAGE = """usage: python -m ember.cli <command> [argument]
   traces              print every recorded claim and whether it holds
   check               report whether any trace is broken
   summary             print how many traces there are
+  names               print every function the standard library provides
 """
 
 
@@ -399,6 +400,16 @@ def _summary() -> int:
     return 0
 
 
+def _names() -> int:
+    from ember.manual import reference
+
+    found = reference()
+    for line in found.render():
+        print(line)
+    # a name two libraries both claim means one of them silently lost
+    return 1 if found.collisions else 0
+
+
 def main(argv: list[str] | None = None) -> int:
     arguments = list(sys.argv[1:] if argv is None else argv)
     if not arguments:
@@ -412,6 +423,8 @@ def main(argv: list[str] | None = None) -> int:
         return _check()
     if command == "summary":
         return _summary()
+    if command == "names":
+        return _names()
     if command == "repl":
         return _repl()
     if command in (

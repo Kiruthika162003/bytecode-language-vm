@@ -15,7 +15,7 @@ class TestTraceCommands:
         code = main(["traces"])
         captured = capsys.readouterr()
         assert code == 0
-        assert "23 traces, 0 broken" in captured.out
+        assert "24 traces, 0 broken" in captured.out
         assert "[holds] fold:" in captured.out
 
     def test_check_reports_that_all_hold(self, capsys):
@@ -26,7 +26,28 @@ class TestTraceCommands:
     def test_summary_counts_the_traces(self, capsys):
         code = main(["summary"])
         assert code == 0
-        assert "23 traces (0 broken)" in capsys.readouterr().out
+        assert "24 traces (0 broken)" in capsys.readouterr().out
+
+
+class TestNamesCommand:
+    def test_every_library_is_listed(self, capsys):
+        code = main(["names"])
+        captured = capsys.readouterr()
+        assert code == 0
+        assert "statistics (" in captured.out
+        assert "functions across" in captured.out
+
+    def test_a_function_appears(self, capsys):
+        main(["names"])
+        assert "mean" in capsys.readouterr().out
+
+    def test_no_collision_is_reported(self, capsys):
+        assert main(["names"]) == 0
+        assert "is registered by" not in capsys.readouterr().out
+
+    def test_the_usage_mentions_it(self, capsys):
+        main([])
+        assert "names " in capsys.readouterr().err
 
 
 class TestEval:
