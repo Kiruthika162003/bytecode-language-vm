@@ -24,6 +24,13 @@ well formed bytecode. The program with an unused local passes the type checker,
 because an unused local is not a type error. And the dead epilogue every function
 carries is invisible to all three of the others, because it is a fact about the
 compiler that no reading of the source would reveal.
+
+The honest limit is worth stating alongside the table, because four green columns
+read like a guarantee and are not one. None of the four knows what the program was
+meant to compute, so the one kind of wrongness that matters most is the one kind
+none of them can see. What they buy is narrower than it looks: they cost a fraction
+of a second and they rule out four specific families of mistake, which is worth
+having precisely because it is cheap, not because it is complete.
 """
 
 from __future__ import annotations
@@ -104,8 +111,8 @@ def main() -> None:
         if before:
             print(f"  {label}: {before} unreachable blocks, {after} after the block pass")
     print()
-    print("a program can pass every check and still be wrong: none of them knows what")
-    print("the program was supposed to compute")
+    print("a program can pass every check and still be wrong: not one of them knows")
+    print("what the program was supposed to compute, which is the limit of all four")
 
 
 if __name__ == "__main__":
