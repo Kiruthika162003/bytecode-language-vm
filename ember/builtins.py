@@ -30,10 +30,12 @@ from typing import Any
 
 from ember.errors import Arithmetic, IndexRange, TypeMismatch
 from ember.higherorder import higher_order_names, install_higher_order
+from ember.jsonlib import install_json_library, json_names
 from ember.listlib import install_list_library, list_names
 from ember.maplib import install_map_library, map_names
 from ember.mathlib import install_math_library, math_names
 from ember.setlib import install_set_library, set_names
+from ember.sortlib import install_sort_library, sort_names
 from ember.statlib import install_stat_library, stat_names
 from ember.stringlib import install_string_library, string_names
 from ember.textlib import install_text_library, text_names
@@ -223,6 +225,8 @@ def install_builtins(machine: VM) -> None:
     install_set_library(machine)
     install_stat_library(machine)
     install_text_library(machine)
+    install_json_library(machine)
+    install_sort_library(machine)
 
 
 def builtin_names() -> list[str]:
@@ -230,4 +234,5 @@ def builtin_names() -> list[str]:
     names |= set(higher_order_names())
     names |= set(map_names()) | set(set_names())
     names |= set(stat_names()) | set(text_names())
+    names |= set(json_names()) | set(sort_names())
     return sorted(names)
