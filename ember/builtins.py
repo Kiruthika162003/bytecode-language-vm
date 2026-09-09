@@ -28,12 +28,14 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from ember.datelib import date_names, install_date_library
 from ember.errors import Arithmetic, IndexRange, TypeMismatch
 from ember.higherorder import higher_order_names, install_higher_order
 from ember.jsonlib import install_json_library, json_names
 from ember.listlib import install_list_library, list_names
 from ember.maplib import install_map_library, map_names
 from ember.mathlib import install_math_library, math_names
+from ember.randomlib import install_random_library, random_names
 from ember.setlib import install_set_library, set_names
 from ember.sortlib import install_sort_library, sort_names
 from ember.statlib import install_stat_library, stat_names
@@ -227,6 +229,8 @@ def install_builtins(machine: VM) -> None:
     install_text_library(machine)
     install_json_library(machine)
     install_sort_library(machine)
+    install_date_library(machine)
+    install_random_library(machine)
 
 
 def builtin_names() -> list[str]:
@@ -235,4 +239,5 @@ def builtin_names() -> list[str]:
     names |= set(map_names()) | set(set_names())
     names |= set(stat_names()) | set(text_names())
     names |= set(json_names()) | set(sort_names())
+    names |= set(date_names()) | set(random_names())
     return sorted(names)
