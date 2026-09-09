@@ -31,6 +31,7 @@ from typing import Any
 from ember.bitlib import bit_names, install_bit_library
 from ember.csvlib import csv_names, install_csv_library
 from ember.datelib import date_names, install_date_library
+from ember.encodelib import encode_names, install_encode_library
 from ember.errors import Arithmetic, IndexRange, TypeMismatch
 from ember.fraclib import fraction_names, install_fraction_library
 from ember.heaplib import heap_names, install_heap_library
@@ -243,6 +244,7 @@ def install_builtins(machine: VM) -> None:
     install_fraction_library(machine)
     install_matrix_library(machine)
     install_regex_library(machine)
+    install_encode_library(machine)
 
 
 def builtin_names() -> list[str]:
@@ -254,4 +256,5 @@ def builtin_names() -> list[str]:
     names |= set(date_names()) | set(random_names()) | set(bit_names())
     names |= set(heap_names()) | set(csv_names()) | set(fraction_names())
     names |= set(matrix_names()) | set(regex_names())
+    names |= set(encode_names())
     return sorted(names)
