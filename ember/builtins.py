@@ -28,6 +28,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from ember.bitlib import bit_names, install_bit_library
 from ember.datelib import date_names, install_date_library
 from ember.errors import Arithmetic, IndexRange, TypeMismatch
 from ember.higherorder import higher_order_names, install_higher_order
@@ -231,6 +232,7 @@ def install_builtins(machine: VM) -> None:
     install_sort_library(machine)
     install_date_library(machine)
     install_random_library(machine)
+    install_bit_library(machine)
 
 
 def builtin_names() -> list[str]:
@@ -239,5 +241,5 @@ def builtin_names() -> list[str]:
     names |= set(map_names()) | set(set_names())
     names |= set(stat_names()) | set(text_names())
     names |= set(json_names()) | set(sort_names())
-    names |= set(date_names()) | set(random_names())
+    names |= set(date_names()) | set(random_names()) | set(bit_names())
     return sorted(names)
