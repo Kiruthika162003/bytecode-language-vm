@@ -32,12 +32,14 @@ from ember.bitlib import bit_names, install_bit_library
 from ember.csvlib import csv_names, install_csv_library
 from ember.datelib import date_names, install_date_library
 from ember.errors import Arithmetic, IndexRange, TypeMismatch
+from ember.fraclib import fraction_names, install_fraction_library
 from ember.heaplib import heap_names, install_heap_library
 from ember.higherorder import higher_order_names, install_higher_order
 from ember.jsonlib import install_json_library, json_names
 from ember.listlib import install_list_library, list_names
 from ember.maplib import install_map_library, map_names
 from ember.mathlib import install_math_library, math_names
+from ember.matrixlib import install_matrix_library, matrix_names
 from ember.randomlib import install_random_library, random_names
 from ember.setlib import install_set_library, set_names
 from ember.sortlib import install_sort_library, sort_names
@@ -237,6 +239,8 @@ def install_builtins(machine: VM) -> None:
     install_bit_library(machine)
     install_heap_library(machine)
     install_csv_library(machine)
+    install_fraction_library(machine)
+    install_matrix_library(machine)
 
 
 def builtin_names() -> list[str]:
@@ -246,5 +250,6 @@ def builtin_names() -> list[str]:
     names |= set(stat_names()) | set(text_names())
     names |= set(json_names()) | set(sort_names())
     names |= set(date_names()) | set(random_names()) | set(bit_names())
-    names |= set(heap_names()) | set(csv_names())
+    names |= set(heap_names()) | set(csv_names()) | set(fraction_names())
+    names |= set(matrix_names())
     return sorted(names)
