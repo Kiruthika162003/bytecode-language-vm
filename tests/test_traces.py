@@ -15,8 +15,8 @@ class TestFinding:
 
 
 class TestRegistry:
-    def test_there_are_twenty_one_traces(self):
-        assert len(TRACES) == 21
+    def test_there_are_twenty_two_traces(self):
+        assert len(TRACES) == 22
 
     def test_every_trace_is_callable(self):
         assert all(callable(trace) for trace in TRACES)
