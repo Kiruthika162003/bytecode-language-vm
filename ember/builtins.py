@@ -40,6 +40,7 @@ from ember.geometrylib import geometry_names, install_geometry_library
 from ember.hashlib import hash_names, install_hash_library
 from ember.heaplib import heap_names, install_heap_library
 from ember.higherorder import higher_order_names, install_higher_order
+from ember.intervallib import install_interval_library, interval_names
 from ember.jsonlib import install_json_library, json_names
 from ember.listlib import install_list_library, list_names
 from ember.maplib import install_map_library, map_names
@@ -257,6 +258,7 @@ def install_builtins(machine: VM) -> None:
     install_hash_library(machine)
     install_geometry_library(machine)
     install_chart_library(machine)
+    install_interval_library(machine)
 
 
 def builtin_names() -> list[str]:
@@ -271,5 +273,5 @@ def builtin_names() -> list[str]:
     names |= set(encode_names()) | set(diff_names())
     names |= set(schema_names()) | set(queue_names())
     names |= set(hash_names()) | set(geometry_names())
-    names |= set(chart_names())
+    names |= set(chart_names()) | set(interval_names())
     return sorted(names)
