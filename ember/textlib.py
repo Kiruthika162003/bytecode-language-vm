@@ -9,6 +9,16 @@ every function here embodies a convention that could reasonably be different, an
 grouping them makes those conventions visible in one place rather than scattered
 through a larger file.
 
+Two functions that belong here by subject are not here, and the reason is worth recording
+because it was a bug before it was a decision. Repeating a string and splitting one into lines
+were written in this module and were already in the core string library, so installing this one
+afterwards silently replaced both. The two versions of splitting into lines were not even the
+same: the older one handles a carriage return before a newline and this one did not, so adding
+this module quietly changed how every program split text on a file written by another system.
+Nothing failed, because both versions pass the obvious tests. The generated reference is what
+found it, by noticing that two libraries claimed one name, and a test now pins that count at
+zero so the next one cannot go unnoticed.
+
 Two of the conventions are worth naming outright. Padding to a width shorter than the
 string returns the string unchanged rather than truncating it, because silently losing
 text is worse than a misaligned column, and a caller who wants truncation has slice
@@ -99,10 +109,6 @@ def _centre(args: list[Any]) -> str:
     return " " * left + text + " " * (spare - left)
 
 
-def _repeat(args: list[Any]) -> str:
-    return _text(args[0], "repeat") * _count(args[1], "repeat")
-
-
 def _reversed_text(args: list[Any]) -> str:
     return _text(args[0], "reversedText")[::-1]
 
@@ -183,10 +189,6 @@ def _count_of(args: list[Any]) -> int:
     return text.count(needle)
 
 
-def _lines(args: list[Any]) -> list[str]:
-    return _text(args[0], "lines").split(_NEWLINE)
-
-
 def _unlines(args: list[Any]) -> str:
     value = args[0]
     if not isinstance(value, list):
@@ -220,7 +222,6 @@ _REGISTRY: dict[str, tuple[int, Any]] = {
     "padLeftWith": (3, _pad_left_with),
     "padRightWith": (3, _pad_right_with),
     "centre": (2, _centre),
-    "repeat": (2, _repeat),
     "reversedText": (1, _reversed_text),
     "title": (1, _title),
     "capitalise": (1, _capitalise),
@@ -230,7 +231,6 @@ _REGISTRY: dict[str, tuple[int, Any]] = {
     "dedent": (1, _dedent),
     "truncate": (2, _truncate),
     "countOf": (2, _count_of),
-    "lines": (1, _lines),
     "unlines": (1, _unlines),
     "isBlank": (1, _is_blank),
     "squeeze": (1, _squeeze),

@@ -4,6 +4,7 @@ import pytest
 
 from ember.errors import Arithmetic, TypeMismatch
 from ember.interpreter import run_output, run_treewalk_output
+from ember.stringlib import string_names
 from ember.textlib import text_names
 
 
@@ -19,8 +20,13 @@ class TestRegistration:
     def test_the_names_are_sorted(self):
         assert text_names() == sorted(text_names())
 
-    def test_there_are_twenty_of_them(self):
-        assert len(text_names()) == 20
+    def test_there_are_eighteen_of_them(self):
+        assert len(text_names()) == 18
+
+    def test_it_does_not_redefine_what_the_string_library_provides(self):
+        # this module once redefined both of these, and installing later silently
+        # replaced them, changing how splitting on a carriage return behaved
+        assert not set(text_names()) & set(string_names())
 
     def test_a_chosen_filler_is_its_own_function(self):
         # a native takes a fixed count of arguments, so there is no optional third
