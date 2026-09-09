@@ -2,151 +2,244 @@ from __future__ import annotations
 
 import pytest
 
-from ember.errors import EmberError
-from ember.interpreter import run_output, run_treewalk_output
-
-# Running each program through the bytecode VM and the tree-walker and
-# demanding identical output is a strong check that neither implementation has
-# drifted from the language. Closures are included now that the bytecode
-# backend captures upvalues, so the two share that semantics too.
-SHARED_PROGRAMS = [
-    "print 1 + 2 * 3 - 4 / 2;",
-    "print (1 + 2) * (3 + 4);",
-    "print 17 % 5;",
-    "print -(-5);",
-    'print "a" + "b" + "c";',
-    "print true and false; print true or false; print not true;",
-    "print 1 < 2; print 2 <= 2; print 3 > 4; print 5 >= 5;",
-    "print 1 == 1; print 1 != 2; print nil == nil;",
-    'if (3 > 2) print "big"; else print "small";',
-    "let s = 0; for (let i = 0; i < 10; i = i + 1) s = s + i; print s;",
-    "let n = 5; let f = 1; while (n > 1) { f = f * n; n = n - 1; } print f;",
-    "fn fib(n) { if (n < 2) return n; return fib(n-1) + fib(n-2); } print fib(15);",
-    "fn add(a, b) { return a + b; } fn sq(x) { return x * x; } print sq(add(2, 3));",
-    "let a = [1, 2, 3]; a[1] = 20; a[0] += 5; print a; print a[2];",
-    'let m = {"x": 1, "y": 2}; m["z"] = 3; print keys(m); print m["y"];',
-    "print len([1, 2, 3, 4]); print min([9, 3, 7]); print max([9, 3, 7]);",
-    "print abs(-8); print floor(3.9); print ceil(3.1); print sqrt(81);",
-    (
-        "let total = 0; let a = [10, 20, 30];"
-        " for (let i = 0; i < len(a); i = i + 1) total = total + a[i]; print total;"
-    ),
-    "print range(5); print contains([1, 2, 3], 2);",
-    "fn fact(n) { if (n <= 1) return 1; return n * fact(n - 1); } print fact(6);",
-    'print upper("hello"); print split("a,b,c", ","); print join(["x", "y"], "-");',
-    "print sorted([5, 3, 8, 1]); print reversed([1, 2, 3]); print sum([1, 2, 3, 4]);",
-    "print pow(2, 8); print gcd(24, 18); print factorial(6); print clamp(20, 0, 9);",
-    'print substring("abcdef", 2, 5); print index_of("abcdef", "cd");',
-    "print unique([1, 2, 2, 3, 3, 3]); print concat([1], [2, 3]);",
-    (
-        "fn make() { let c = 0; fn inc() { c = c + 1; return c; } return inc; }"
-        " let f = make(); print f(); print f(); let g = make(); print g();"
-    ),
-    (
-        "fn adder(n) { fn add(x) { return x + n; } return add; }"
-        " let a2 = adder(2); let a10 = adder(10); print a2(1); print a10(1);"
-    ),
-    (
-        "fn pair() { let n = 0; fn up() { n = n + 1; return n; }"
-        " fn get() { return n; } up(); up(); up(); return get(); } print pair();"
-    ),
-    (
-        "fn outer() { let x = 7; fn mid() { fn inner() { return x; }"
-        " return inner(); } return mid(); } print outer();"
-    ),
-    'class G { greet() { return "hi"; } } print G().greet();',
-    (
-        "class Point { init(x, y) { this.x = x; this.y = y; }"
-        " sum() { return this.x + this.y; } }"
-        " let p = Point(3, 4); print p.x; print p.sum();"
-    ),
-    (
-        "class C { init() { this.n = 0; } bump() { this.n = this.n + 1; return this.n; } }"
-        " let c = C(); print c.bump(); print c.bump(); print c.bump();"
-    ),
-    "class T { m() { return 1; } } print type(T); print type(T()); print T; print T();",
-    (
-        'class S { name() { return "m"; } } let s = S();'
-        ' print s.name(); s.name = "f"; print s.name;'
-    ),
-    (
-        "class D { init(v) { this.v = v; } get() { return this.v; } }"
-        " let d = D(7); let f = d.get; print f(); print f;"
-    ),
-    (
-        "class E { init() { this.v = 9; }"
-        " make() { fn inner() { return this.v; } return inner; } }"
-        " print E().make()();"
-    ),
-    (
-        "class Acc { init() { this.t = 0; } add(n) { this.t = this.t + n; return this; } }"
-        " print Acc().add(3).add(4).t;"
-    ),
-    "class B { init(v) { this.v = v; } } let b = B(1); b.v = 9; b.v += 1; print b.v;",
-    'class A { greet() { return "A"; } } class B < A {} print B().greet();',
-    (
-        'class A { greet() { return "A"; } }'
-        ' class B < A { greet() { return "B"; } }'
-        " print B().greet(); print A().greet();"
-    ),
-    (
-        'class A { greet() { return "A"; } }'
-        ' class B < A { greet() { return super.greet() + "+B"; } }'
-        " print B().greet();"
-    ),
-    (
-        "class A { init(x) { this.x = x; } }"
-        " class B < A { init(x, y) { super.init(x); this.y = y; }"
-        " sum() { return this.x + this.y; } }"
-        " print B(3, 4).sum(); print type(B(1, 2));"
-    ),
-    (
-        "class A { m() { return 1; } }"
-        " class B < A { m() { return super.m() + 1; } }"
-        " class C < B { m() { return super.m() + 1; } }"
-        " print C().m();"
-    ),
-]
+from ember import interpreter
+from ember.differential import (
+    BOTH,
+    CONFIGURATIONS,
+    FOLDED,
+    PEEPED,
+    PLAIN,
+    WALKED,
+    Campaign,
+    Disagreement,
+    Outcome,
+    all_refused,
+    campaign,
+    compare,
+    outcomes_for,
+)
+from ember.generator import program_for
 
 
-@pytest.mark.parametrize("source", SHARED_PROGRAMS)
-def test_both_backends_agree(source: str):
-    assert run_output(source) == run_treewalk_output(source)
+class TestOutcomes:
+    def test_a_printed_run_is_not_a_refusal(self):
+        outcome = Outcome(label=PLAIN, output=["1"])
+        assert not outcome.refused
+        assert outcome.comparable() == ("printed", "1")
+
+    def test_a_refusal_compares_as_its_message(self):
+        outcome = Outcome(label=PLAIN, refusal="division by zero")
+        assert outcome.refused
+        assert outcome.comparable() == ("refused", "division by zero")
+
+    def test_two_refusals_with_different_messages_do_not_match(self):
+        first = Outcome(label=PLAIN, refusal="a")
+        second = Outcome(label=WALKED, refusal="b")
+        assert first.comparable() != second.comparable()
+
+    def test_an_outcome_describes_itself(self):
+        assert "printed" in Outcome(label=PLAIN, output=["1"]).describe()
+        assert "refused" in Outcome(label=PLAIN, refusal="no").describe()
+
+    def test_an_empty_run_differs_from_a_run_that_printed(self):
+        empty = Outcome(label=PLAIN)
+        printed = Outcome(label=PLAIN, output=["1"])
+        assert empty.comparable() != printed.comparable()
 
 
-class TestErrorsAgree:
-    @pytest.mark.parametrize(
-        "source",
-        [
-            "print 1 / 0;",
-            'print 1 + "x";',
-            "print missing;",
-            "fn f(x) { return x; } f();",
-            "const k = 1; k = 2;",
-            "let a = [1]; print a[9];",
-            "print this;",
-            "class C { init() { return 5; } }",
-            "class C {} print C().missing;",
-            "let x = 5; print x.f;",
-            "class C {} C(1);",
-            "class C { m() { return 1; } m() { return 2; } }",
-            "class A < A {}",
-            "let x = 1; class B < x {}",
-            "class A {} print super.m();",
-            "class A { m() { return super.m(); } }",
-            "class A {} class B < A { m() { return super.nope(); } } B().m();",
-        ],
-    )
-    def test_both_backends_reject_the_same_programs(self, source: str):
-        vm_error = None
-        tw_error = None
-        try:
-            run_output(source)
-        except EmberError as exc:
-            vm_error = type(exc)
-        try:
-            run_treewalk_output(source)
-        except EmberError as exc:
-            tw_error = type(exc)
-        assert vm_error is not None
-        assert tw_error is not None
+class TestAgreement:
+    def test_all_five_configurations_are_tried(self):
+        assert len(outcomes_for("print 1;")) == len(CONFIGURATIONS)
+        assert len(CONFIGURATIONS) == 5
+
+    def test_a_simple_program_agrees(self):
+        assert compare("print 1 + 2 * 3;") is None
+
+    def test_a_closure_agrees(self):
+        source = "fn make() { let c = 0; fn inc() { c = c + 1; return c; } return inc; }"
+        assert compare(source + " let g = make(); print g(); print g();") is None
+
+    def test_a_class_with_inheritance_agrees(self):
+        source = (
+            "class A { m() { return 1; } } class B < A { m() { return super.m() + 1; } }"
+            " print B().m();"
+        )
+        assert compare(source) is None
+
+    def test_a_loop_agrees(self):
+        source = "let s = 0; for (let i = 0; i < 6; i = i + 1) s = s + i; print s;"
+        assert compare(source) is None
+
+    def test_a_refusal_agrees_when_every_backend_refuses(self):
+        # all five must agree about failure too, not only about success
+        assert compare("print 1 / 0;") is None
+
+    def test_a_program_every_backend_refuses_is_recognised(self):
+        assert all_refused("print 1 / 0;")
+
+    def test_a_program_that_runs_is_not_all_refused(self):
+        assert not all_refused("print 1;")
+
+
+class TestGeneratedProgramsAgree:
+    @pytest.mark.parametrize("seed", range(40))
+    def test_a_generated_program_agrees_everywhere(self, seed):
+        assert compare(program_for(seed), seed=seed) is None
+
+    @pytest.mark.parametrize("seed", [500, 501, 502, 503])
+    def test_a_longer_generated_program_agrees(self, seed):
+        assert compare(program_for(seed, 12), seed=seed) is None
+
+
+class TestCampaigns:
+    def test_a_campaign_checks_the_count_asked_for(self):
+        result = campaign(12)
+        assert result.checked == 12
+
+    def test_a_campaign_over_generated_programs_is_clean(self):
+        result = campaign(40)
+        assert result.clean
+        assert result.disagreements == []
+
+    def test_every_program_is_accounted_for(self):
+        result = campaign(20)
+        counted = result.agreed + result.refused + len(result.disagreements)
+        assert counted == result.checked
+
+    def test_the_summary_names_the_numbers(self):
+        rendered = campaign(5).summary()
+        assert "5 programs checked" in rendered
+        assert "disagreed" in rendered
+
+    def test_a_campaign_is_reproducible_from_its_seeds(self):
+        first = campaign(8, first_seed=77).summary()
+        assert first == campaign(8, first_seed=77).summary()
+
+    def test_an_empty_campaign_is_clean(self):
+        result = campaign(0)
+        assert result.clean
+        assert result.checked == 0
+
+    def test_a_campaign_with_a_disagreement_is_not_clean(self):
+        result = Campaign(checked=1, disagreements=[Disagreement(source="x")])
+        assert not result.clean
+
+
+class TestDetectionPower:
+    """A differential test that cannot fail proves nothing, so break one on purpose."""
+
+    def test_a_broken_walker_is_caught(self, monkeypatch):
+        real = interpreter.run_treewalk_output
+
+        def perturbed(source, **options):
+            printed = real(source, **options)
+            return ["999", *printed[1:]] if printed else printed
+
+        monkeypatch.setattr(interpreter, "run_treewalk_output", perturbed)
+        assert compare("print 1 + 2;") is not None
+
+    def test_a_broken_walker_is_blamed_on_the_compiled_side(self, monkeypatch):
+        real = interpreter.run_treewalk_output
+
+        def perturbed(source, **options):
+            printed = real(source, **options)
+            return ["999", *printed[1:]] if printed else printed
+
+        monkeypatch.setattr(interpreter, "run_treewalk_output", perturbed)
+        found = compare("print 1 + 2;")
+        assert found is not None
+        assert "only the walker differs" in found.suspect()
+
+    def test_a_broken_folder_is_blamed_on_the_folding_pass(self, monkeypatch):
+        real = interpreter.run_output
+
+        def perturbed(source, optimize=False, peephole=False, **options):
+            printed = real(source, optimize=optimize, peephole=peephole, **options)
+            if optimize and not peephole and printed:
+                return ["-1", *printed[1:]]
+            return printed
+
+        monkeypatch.setattr(interpreter, "run_output", perturbed)
+        found = compare("print 1 + 2;")
+        assert found is not None
+        assert FOLDED in found.suspect()
+
+    def test_a_broken_walker_is_caught_on_every_generated_seed(self, monkeypatch):
+        real = interpreter.run_treewalk_output
+
+        def perturbed(source, **options):
+            printed = real(source, **options)
+            return ["999", *printed[1:]] if printed else printed
+
+        monkeypatch.setattr(interpreter, "run_treewalk_output", perturbed)
+        caught = sum(1 for seed in range(15) if compare(program_for(seed), seed=seed))
+        assert caught == 15
+
+    def test_a_campaign_notices_a_broken_backend(self, monkeypatch):
+        real = interpreter.run_treewalk_output
+
+        def perturbed(source, **options):
+            printed = real(source, **options)
+            return ["999", *printed[1:]] if printed else printed
+
+        monkeypatch.setattr(interpreter, "run_treewalk_output", perturbed)
+        assert not campaign(6).clean
+
+
+class TestDisagreementReports:
+    def _split(self) -> Disagreement:
+        return Disagreement(
+            source="print 1;",
+            seed=42,
+            outcomes=[
+                Outcome(label=WALKED, output=["2"]),
+                Outcome(label=PLAIN, output=["1"]),
+                Outcome(label=FOLDED, output=["1"]),
+                Outcome(label=PEEPED, output=["1"]),
+                Outcome(label=BOTH, output=["1"]),
+            ],
+        )
+
+    def test_the_groups_gather_the_configurations_that_matched(self):
+        grouped = self._split().groups()
+        assert len(grouped) == 2
+        assert sorted(len(listed) for listed in grouped.values()) == [1, 4]
+
+    def test_a_lone_walker_points_at_the_compiler(self):
+        assert "compiler or the machine" in self._split().suspect()
+
+    def test_the_report_carries_the_seed_and_the_source(self):
+        lines = self._split().render()
+        assert any("seed 42" in line for line in lines)
+        assert any("print 1;" in line for line in lines)
+
+    def test_the_report_names_every_configuration(self):
+        rendered = "\n".join(self._split().render())
+        for label in CONFIGURATIONS:
+            assert label in rendered
+
+    def test_a_three_way_split_blames_more_than_one_component(self):
+        messy = Disagreement(
+            source="print 1;",
+            outcomes=[
+                Outcome(label=WALKED, output=["1"]),
+                Outcome(label=PLAIN, output=["2"]),
+                Outcome(label=FOLDED, output=["3"]),
+                Outcome(label=PEEPED, output=["4"]),
+                Outcome(label=BOTH, output=["5"]),
+            ],
+        )
+        assert "more than one component" in messy.suspect()
+
+    def test_a_clean_divide_between_walking_and_compiling_is_named(self):
+        divided = Disagreement(
+            source="print 1;",
+            outcomes=[
+                Outcome(label=WALKED, output=["1"]),
+                Outcome(label=PLAIN, output=["2"]),
+                Outcome(label=FOLDED, output=["2"]),
+                Outcome(label=PEEPED, output=["2"]),
+                Outcome(label=BOTH, output=["2"]),
+            ],
+        )
+        assert "only the walker differs" in divided.suspect()
