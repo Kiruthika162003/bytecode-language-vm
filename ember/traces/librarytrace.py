@@ -17,9 +17,9 @@ for: nothing failed, and something was wrong.
 
 So this trace holds when three counts are as they should be. No name is claimed by two
 libraries. Every name a library registers is a name the machine has. And the total is the
-sum of the libraries, which catches a library listed in the reference but silently empty. The numbers are
-reported rather than only checked, because the size of the library is itself worth knowing and
-nobody has counted it by hand since it was small.
+sum of the libraries, which catches a library listed in the reference but silently empty.
+The numbers are reported rather than only checked, because the size of the library is
+itself worth knowing and nobody has counted it by hand since it was small.
 """
 
 from __future__ import annotations
