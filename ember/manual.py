@@ -59,6 +59,7 @@ from ember.sortlib import sort_names
 from ember.statelib import state_names
 from ember.statlib import stat_names
 from ember.stringlib import string_names
+from ember.tablelib import table_names
 from ember.textlib import text_names
 from ember.unitlib import unit_names
 from ember.versionlib import version_names
@@ -91,6 +92,7 @@ _LIBRARIES = {
     "state machines": state_names,
     "statistics": stat_names,
     "strings": string_names,
+    "tables": table_names,
     "text": text_names,
     "units": unit_names,
     "versions": version_names,
