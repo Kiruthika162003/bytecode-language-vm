@@ -34,6 +34,7 @@ from ember.traces import (
     serializetrace,
     sharedtrace,
     slottrace,
+    typetrace,
     unwindtrace,
     verifytrace,
 )
@@ -59,6 +60,7 @@ TRACES: tuple[Callable[[], Finding], ...] = (
     agreetrace.run,
     verifytrace.run,
     fuzztrace.run,
+    typetrace.run,
 )
 
 
