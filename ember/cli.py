@@ -33,6 +33,8 @@ _USAGE = """usage: python -m ember.cli <command> [argument]
   format <file>       print the program in one canonical layout
   lint <file>         report what compiles but a reader would question
   verify <file>       check the emitted bytecode is well formed
+  test <file>         run the program's test functions and report which held
+  coverage <file>     run the program and report which lines never ran
   repl                start an interactive session
   traces              print every recorded claim and whether it holds
   check               report whether any trace is broken
@@ -91,6 +93,36 @@ def _format(source: str) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
     print(format_program(statements), end="")
+    return 0
+
+
+def _test(source: str) -> int:
+    from ember.errors import EmberError
+    from ember.testrunner import run_suite
+
+    try:
+        suite = run_suite(source)
+    except EmberError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    for line in suite.render():
+        print(line)
+    # a failing test is a failing command, which is what a build needs from it
+    return 0 if suite.all_held else 1
+
+
+def _coverage(source: str) -> int:
+    from ember.coverage import measure
+    from ember.errors import EmberError
+
+    try:
+        report = measure(source)
+    except EmberError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    for line in report.render(source):
+        print(line)
+    # coverage is information, not a verdict, so an incomplete report still succeeds
     return 0
 
 
@@ -248,6 +280,8 @@ def main(argv: list[str] | None = None) -> int:
         "format",
         "lint",
         "verify",
+        "test",
+        "coverage",
     ):
         if not rest:
             print(f"{command} needs an argument", file=sys.stderr)
@@ -268,6 +302,10 @@ def main(argv: list[str] | None = None) -> int:
             return _lint(source)
         if command == "verify":
             return _verify(source)
+        if command == "test":
+            return _test(source)
+        if command == "coverage":
+            return _coverage(source)
         return _disassemble(source, optimize=command == "optimized")
     print(f"unknown command {command!r}\n\n{_USAGE}", file=sys.stderr)
     return 2

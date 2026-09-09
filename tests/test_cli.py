@@ -194,6 +194,89 @@ class TestVerify:
         assert "verify <file>" in capsys.readouterr().err
 
 
+class TestTestCommand:
+    def test_a_passing_suite_succeeds(self, capsys, tmp_path):
+        path = tmp_path / "suite.ember"
+        path.write_text(
+            "fn add(a, b) { return a + b; }"
+            + chr(10)
+            + "fn testAdds() { if (add(1, 2) != 3) throw 1; }",
+            encoding="utf-8",
+        )
+        code = main(["test", str(path)])
+        captured = capsys.readouterr()
+        assert code == 0
+        assert "testAdds: passed" in captured.out
+        assert "1 tests: 1 passed" in captured.out
+
+    def test_a_failing_suite_fails_the_command(self, capsys, tmp_path):
+        # a failing test is a failing command, which is what a build needs
+        path = tmp_path / "suite.ember"
+        path.write_text('fn testWrong() { throw "no"; }', encoding="utf-8")
+        code = main(["test", str(path)])
+        assert code == 1
+        assert "failed: no" in capsys.readouterr().out
+
+    def test_a_faulting_test_is_reported_as_an_error(self, capsys, tmp_path):
+        path = tmp_path / "suite.ember"
+        path.write_text("fn testFaults() { print 1 / 0; }", encoding="utf-8")
+        assert main(["test", str(path)]) == 1
+        assert "errored" in capsys.readouterr().out
+
+    def test_a_program_with_no_tests_says_so(self, capsys, tmp_path):
+        path = tmp_path / "plain.ember"
+        path.write_text("print 1;", encoding="utf-8")
+        assert main(["test", str(path)]) == 0
+        assert "no tests found" in capsys.readouterr().out
+
+    def test_a_syntax_fault_is_reported(self, capsys, tmp_path):
+        path = tmp_path / "bad.ember"
+        path.write_text("let x = ;", encoding="utf-8")
+        assert main(["test", str(path)]) == 1
+        assert "error:" in capsys.readouterr().err
+
+    def test_the_usage_mentions_it(self, capsys):
+        main([])
+        assert "test <file>" in capsys.readouterr().err
+
+
+class TestCoverageCommand:
+    def test_a_fully_covered_program_reports_everything_ran(self, capsys, tmp_path):
+        path = tmp_path / "full.ember"
+        path.write_text("print 1;" + chr(10) + "print 2;" + chr(10), encoding="utf-8")
+        code = main(["coverage", str(path)])
+        captured = capsys.readouterr()
+        assert code == 0
+        assert "100 percent" in captured.out
+
+    def test_a_missed_line_is_named_and_shown(self, capsys, tmp_path):
+        path = tmp_path / "partial.ember"
+        path.write_text(
+            "if (false) {" + chr(10) + '  print "never";' + chr(10) + "}" + chr(10),
+            encoding="utf-8",
+        )
+        code = main(["coverage", str(path)])
+        captured = capsys.readouterr()
+        # coverage is information, not a verdict, so it still succeeds
+        assert code == 0
+        assert "never ran" in captured.out
+        assert 'print "never";' in captured.out
+
+    def test_a_syntax_fault_is_reported(self, capsys, tmp_path):
+        path = tmp_path / "bad.ember"
+        path.write_text("let x = ;", encoding="utf-8")
+        assert main(["coverage", str(path)]) == 1
+        assert "error:" in capsys.readouterr().err
+
+    def test_coverage_needs_an_argument(self, capsys):
+        assert main(["coverage"]) == 2
+        assert "needs an argument" in capsys.readouterr().err
+
+    def test_the_usage_mentions_it(self, capsys):
+        main([])
+        assert "coverage <file>" in capsys.readouterr().err
+
+
 class TestRepl:
     def test_it_evaluates_lines_and_ends_on_end_of_input(self, capsys, monkeypatch):
         lines = iter(["1 + 2;", "fn dbl(x) { return x * 2; }", "dbl(4);"])
