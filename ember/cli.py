@@ -37,6 +37,7 @@ _USAGE = """usage: python -m ember.cli <command> [argument]
   coverage <file>     run the program and report which lines never ran
   docs <file>         print a reference of what the program declares
   types <file>        report the definite type mistakes a program contains
+  step <file>         show what the machine did, instruction by instruction
   repl                start an interactive session
   traces              print every recorded claim and whether it holds
   check               report whether any trace is broken
@@ -96,6 +97,26 @@ def _format(source: str) -> int:
         return 1
     print(format_program(statements), end="")
     return 0
+
+
+def _step(source: str) -> int:
+    from ember.errors import EmberError
+    from ember.tracer import trace
+
+    try:
+        record = trace(source, cap=2000)
+    except EmberError as error:
+        # a program that never compiled has no trace; a runtime fault is in one
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    for line in record.render(limit=200):
+        print(line)
+    if record.output:
+        print()
+        print("what it printed:")
+        for printed in record.output:
+            print("  " + printed)
+    return 1 if record.refused else 0
 
 
 def _types(source: str) -> int:
@@ -319,6 +340,7 @@ def main(argv: list[str] | None = None) -> int:
         "coverage",
         "docs",
         "types",
+        "step",
     ):
         if not rest:
             print(f"{command} needs an argument", file=sys.stderr)
@@ -347,6 +369,8 @@ def main(argv: list[str] | None = None) -> int:
             return _docs(source)
         if command == "types":
             return _types(source)
+        if command == "step":
+            return _step(source)
         return _disassemble(source, optimize=command == "optimized")
     print(f"unknown command {command!r}\n\n{_USAGE}", file=sys.stderr)
     return 2

@@ -354,6 +354,48 @@ class TestTypesCommand:
         assert "types <file>" in capsys.readouterr().err
 
 
+class TestStepCommand:
+    def test_the_instructions_are_listed(self, capsys, tmp_path):
+        path = tmp_path / "plain.ember"
+        path.write_text("print 1 + 2;", encoding="utf-8")
+        code = main(["step", str(path)])
+        captured = capsys.readouterr()
+        assert code == 0
+        assert "ADD" in captured.out
+        assert "PRINT" in captured.out
+
+    def test_what_the_program_printed_is_shown(self, capsys, tmp_path):
+        path = tmp_path / "plain.ember"
+        path.write_text("print 1 + 2;", encoding="utf-8")
+        main(["step", str(path)])
+        captured = capsys.readouterr()
+        assert "what it printed:" in captured.out
+        assert "  3" in captured.out
+
+    def test_a_runtime_fault_is_part_of_the_trace(self, capsys, tmp_path):
+        path = tmp_path / "bad.ember"
+        path.write_text("print 1 / 0;", encoding="utf-8")
+        code = main(["step", str(path)])
+        captured = capsys.readouterr()
+        assert code == 1
+        assert "then it faulted" in captured.out
+        assert "DIVIDE" in captured.out
+
+    def test_a_compile_fault_is_reported_instead(self, capsys, tmp_path):
+        path = tmp_path / "bad.ember"
+        path.write_text("let x = ;", encoding="utf-8")
+        assert main(["step", str(path)]) == 1
+        assert "error:" in capsys.readouterr().err
+
+    def test_step_needs_an_argument(self, capsys):
+        assert main(["step"]) == 2
+        assert "needs an argument" in capsys.readouterr().err
+
+    def test_the_usage_mentions_it(self, capsys):
+        main([])
+        assert "step <file>" in capsys.readouterr().err
+
+
 class TestRepl:
     def test_it_evaluates_lines_and_ends_on_end_of_input(self, capsys, monkeypatch):
         lines = iter(["1 + 2;", "fn dbl(x) { return x * 2; }", "dbl(4);"])
