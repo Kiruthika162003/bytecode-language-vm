@@ -109,6 +109,10 @@ class VM:
         # profiling is off by default so the dispatch loop pays one branch, not a
         # line-table walk, on every instruction
         self.profile: Profile | None = None
+        # a watcher is told about every instruction before it runs, which is what lets
+        # a tracer or a debugger see the machine without either of them reimplementing
+        # the dispatch loop; it costs the same one branch that profiling does
+        self.watcher: Callable[[VM, OpCode], None] | None = None
         self.handlers: list[Handler] = []
 
     def reset_execution_state(self) -> None:
@@ -128,6 +132,10 @@ class VM:
     def enable_profiling(self) -> Profile:
         self.profile = Profile()
         return self.profile
+
+    def watch(self, watcher: Callable[[VM, OpCode], None] | None) -> None:
+        """Call this before every instruction, or pass None to stop watching."""
+        self.watcher = watcher
 
     def define_native(
         self,
@@ -238,6 +246,8 @@ class VM:
                 opcode = OpCode(self._read_byte())
                 if self.profile is not None:
                     self.profile.record(opcode, self.current_line())
+                if self.watcher is not None:
+                    self.watcher(self, opcode)
                 if opcode == OpCode.CONSTANT:
                     self.stack.append(self._read_constant())
                 elif opcode == OpCode.NIL:
