@@ -17,7 +17,7 @@ for (let i = 0; i < len(names); i = i + 1) {
 ```
 
 ```bash
-python -m ember.cli run hello.em
+python -m ember.cli run hello.ember
 ```
 
 ## What is here
@@ -134,5 +134,8 @@ python -m examples.first_program
 The eleven example programs in `examples/` are each an essay that runs. They print their
 measurements rather than asserting them, and every one closes by naming a cost, a limit, or
 a refusal, which a test enforces.
+
+`build_instructions.md` covers all of this in detail: what to install, every subcommand with
+its output, the exit code each one uses, and what has not been tested.
 
 Written by Kiruthika Subramani in collaboration with Claude, Anthropic's AI assistant.
