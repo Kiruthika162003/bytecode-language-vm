@@ -57,6 +57,7 @@ from ember.statelib import install_state_library, state_names
 from ember.statlib import install_stat_library, stat_names
 from ember.stringlib import install_string_library, string_names
 from ember.textlib import install_text_library, text_names
+from ember.unitlib import install_unit_library, unit_names
 from ember.valueops import stringify, type_name, values_equal
 from ember.versionlib import install_version_library, version_names
 from ember.vm import VM
@@ -265,6 +266,7 @@ def install_builtins(machine: VM) -> None:
     install_state_library(machine)
     install_pretty_library(machine)
     install_version_library(machine)
+    install_unit_library(machine)
 
 
 def builtin_names() -> list[str]:
@@ -281,5 +283,5 @@ def builtin_names() -> list[str]:
     names |= set(hash_names()) | set(geometry_names())
     names |= set(chart_names()) | set(interval_names())
     names |= set(state_names()) | set(pretty_names())
-    names |= set(version_names())
+    names |= set(version_names()) | set(unit_names())
     return sorted(names)
