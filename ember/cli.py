@@ -36,6 +36,7 @@ _USAGE = """usage: python -m ember.cli <command> [argument]
   test <file>         run the program's test functions and report which held
   coverage <file>     run the program and report which lines never ran
   docs <file>         print a reference of what the program declares
+  types <file>        report the definite type mistakes a program contains
   repl                start an interactive session
   traces              print every recorded claim and whether it holds
   check               report whether any trace is broken
@@ -95,6 +96,21 @@ def _format(source: str) -> int:
         return 1
     print(format_program(statements), end="")
     return 0
+
+
+def _types(source: str) -> int:
+    from ember.errors import EmberError
+    from ember.typecheck import check, report
+
+    try:
+        lines = report(source)
+    except EmberError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    for line in lines:
+        print(line)
+    # a definite type mistake will fault at runtime, so it fails the command
+    return 1 if check(source) else 0
 
 
 def _docs(source: str) -> int:
@@ -302,6 +318,7 @@ def main(argv: list[str] | None = None) -> int:
         "test",
         "coverage",
         "docs",
+        "types",
     ):
         if not rest:
             print(f"{command} needs an argument", file=sys.stderr)
@@ -328,6 +345,8 @@ def main(argv: list[str] | None = None) -> int:
             return _coverage(source)
         if command == "docs":
             return _docs(source)
+        if command == "types":
+            return _types(source)
         return _disassemble(source, optimize=command == "optimized")
     print(f"unknown command {command!r}\n\n{_USAGE}", file=sys.stderr)
     return 2
