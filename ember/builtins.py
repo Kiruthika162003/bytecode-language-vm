@@ -29,6 +29,7 @@ import math
 from typing import Any
 
 from ember.bitlib import bit_names, install_bit_library
+from ember.chartlib import chart_names, install_chart_library
 from ember.csvlib import csv_names, install_csv_library
 from ember.datelib import date_names, install_date_library
 from ember.difflib import diff_names, install_diff_library
@@ -255,6 +256,7 @@ def install_builtins(machine: VM) -> None:
     install_queue_library(machine)
     install_hash_library(machine)
     install_geometry_library(machine)
+    install_chart_library(machine)
 
 
 def builtin_names() -> list[str]:
@@ -269,4 +271,5 @@ def builtin_names() -> list[str]:
     names |= set(encode_names()) | set(diff_names())
     names |= set(schema_names()) | set(queue_names())
     names |= set(hash_names()) | set(geometry_names())
+    names |= set(chart_names())
     return sorted(names)
