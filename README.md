@@ -137,5 +137,3 @@ a refusal, which a test enforces.
 
 `build_instructions.md` covers all of this in detail: what to install, every subcommand with
 its output, the exit code each one uses, and what has not been tested.
-
-Written by Kiruthika Subramani in collaboration with Claude, Anthropic's AI assistant.
